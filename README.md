@@ -1,16 +1,55 @@
-# kundoluk_plus_vibe
+# Kundoluk Plus Vibe
 
-A new Flutter project.
+Кроссплатформенное Flutter-приложение только для учеников с офлайн-first подходом: данные отображаются из кэша сразу (если есть), затем обновляются из сети. Поддерживаются несколько аккаунтов, переключение, базовые настройки сети, блокировка приложения PIN/паролем.
 
-## Getting Started
+---
 
-This project is a starting point for a Flutter application.
+## Возможности
 
-A few resources to get you started if this is your first Flutter project:
+- Авторизация ученика (`loginStudent`)
+- Несколько аккаунтов на одном устройстве + переключение
+- Офлайн-first:
+  - показ кэша мгновенно (если есть)
+  - обновление из сети в фоне
+  - корректные статусы: `offlineUsingCache`, `errorNoCache`, `loading`
+- Расписание на выбранную дату + детали урока
+- Оценки за четверть (с сортировками, группировкой по предметам, средними)
+- Четвертные/итоговые оценки
+- Профиль + смена пароля аккаунта
+- Настройки:
+  - тема (light/dark/system)
+  - Base URL API
+  - User-Agent
+  - блокировка приложения и таймаут
 
-- [Lab: Write your first Flutter app](https://docs.flutter.dev/get-started/codelab)
-- [Cookbook: Useful Flutter samples](https://docs.flutter.dev/cookbook)
+---
 
-For help getting started with Flutter development, view the
-[online documentation](https://docs.flutter.dev/), which offers tutorials,
-samples, guidance on mobile development, and a full API reference.
+## Технологии и зависимости
+
+- Flutter + Material 3
+- `dio` — HTTP-клиент
+- `hive_flutter` — локальный кэш API-ответов (per-user)
+- `shared_preferences` — настройки и метаданные аккаунтов
+- `flutter_secure_storage` — хранение токена/пароля (где поддерживается)
+- `intl` — локализация дат (ru_RU)
+- `flutter_localizations` — локализация Flutter UI
+
+---
+
+## Структура проекта (lib/)
+
+Рекомендуемая модульная структура:
+
+- `app/` — точка сборки приложения, DI, gate-логика (login/home/lock)
+- `core/` — расширения, хелперы, offline-state, сетевые модели ошибок
+- `data/` — API-клиент и сторы (auth/settings/appLock)
+- `domain/` — модели и бизнес-логика (school year, schedule, marks)
+- `ui/` — экраны/виджеты/логика отображения
+
+---
+
+## Требования
+
+- Flutter SDK: рекомендуется последняя стабильная версия
+- Dart SDK: согласно Flutter SDK
+- Android Studio / VS Code + Flutter plugin
