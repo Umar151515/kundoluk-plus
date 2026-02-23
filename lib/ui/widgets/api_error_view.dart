@@ -1,20 +1,38 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../../core/helpers/copy.dart';
 import '../../core/network/api_error_kind.dart';
 import '../../core/network/api_failure.dart';
+import '../../data/stores/app_settings_store.dart';
 
 class ApiErrorView extends StatelessWidget {
   final ApiFailure failure;
   final VoidCallback onRetry;
   final bool vacationHint;
 
+  final AppSettingsStore? settings;
+
   const ApiErrorView({
     super.key,
     required this.failure,
     required this.onRetry,
     this.vacationHint = false,
+    this.settings,
   });
+
+  static const String _corsDemoUrl = 'https://cors-anywhere.herokuapp.com/corsdemo';
+
+  Future<void> _openCorsDemo(BuildContext context) async {
+    final uri = Uri.parse(_corsDemoUrl);
+    final ok = await launchUrl(uri, mode: LaunchMode.externalApplication);
+    if (!ok && context.mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Не удалось открыть сайт. Открой его вручную в новой вкладке.')),
+      );
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -22,7 +40,7 @@ class ApiErrorView extends StatelessWidget {
 
     String hint = '';
     if (failure.kind == ApiErrorKind.badUrl) {
-      hint = 'Открой настройки и проверь Base URL.';
+      hint = 'Открой настройки и проверь адрес API.';
     } else if (failure.kind == ApiErrorKind.network) {
       hint = 'Проверь интернет или попробуй позже.';
     } else if (failure.kind == ApiErrorKind.unauthorized) {
@@ -30,6 +48,8 @@ class ApiErrorView extends StatelessWidget {
     } else if (vacationHint) {
       hint = 'Также возможно, что это каникулы (дата вне четвертей).';
     }
+
+    final showCorsHint = kIsWeb && (settings?.shouldShowWebCorsHint ?? false);
 
     return Center(
       child: ConstrainedBox(
@@ -54,17 +74,35 @@ class ApiErrorView extends StatelessWidget {
                     ),
                   ),
                   const SizedBox(height: 8),
-                  Text(
-                    failure.message,
-                    style: TextStyle(color: cs.onErrorContainer),
-                  ),
+                  Text(failure.message, style: TextStyle(color: cs.onErrorContainer)),
                   if (hint.isNotEmpty) ...[
                     const SizedBox(height: 8),
+                    Text(hint, style: TextStyle(color: cs.onErrorContainer.withValues(alpha: 0.9))),
+                  ],
+
+                  if (showCorsHint) ...[
+                    const SizedBox(height: 10),
                     Text(
-                      hint,
-                      style: TextStyle(color: cs.onErrorContainer.withValues(alpha: 0.9)),
+                      'Если ты открываешь приложение через браузер: попробуй зайти на сайт CORS Anywhere и дать доступ.',
+                      style: TextStyle(color: cs.onErrorContainer.withValues(alpha: 0.95), fontWeight: FontWeight.w700),
+                    ),
+                    const SizedBox(height: 8),
+                    Wrap(
+                      spacing: 10,
+                      runSpacing: 10,
+                      children: [
+                        FilledButton.tonal(
+                          onPressed: () => _openCorsDemo(context),
+                          child: const Text('Открыть сайт'),
+                        ),
+                        SelectableText(
+                          _corsDemoUrl,
+                          style: TextStyle(color: cs.onErrorContainer.withValues(alpha: 0.9)),
+                        ),
+                      ],
                     ),
                   ],
+
                   const SizedBox(height: 14),
                   Wrap(
                     spacing: 10,

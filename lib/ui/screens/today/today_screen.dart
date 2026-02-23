@@ -101,7 +101,7 @@ class _TodayScreenState extends State<TodayScreen> {
         final action = json.containsKey('actionResult') ? json['actionResult'] : json;
         final list = (action as List?) ?? const [];
         final lessons = list
-            .map((e) => Lesson.fromJson((e as Map).cast<String, dynamic>()))
+            .map((e) => Lesson.fromJson(e is Map ? e.cast<String, dynamic>() : <String, dynamic>{}))
             .whereType<Lesson>()
             .toList()
           ..sort((a, b) => (a.lessonNumber ?? 999).compareTo(b.lessonNumber ?? 999));
@@ -276,7 +276,7 @@ class _TodayScreenState extends State<TodayScreen> {
         ? 'Показаны сохранённые данные.'
         : _isConnectivityish(offlineReason)
             ? 'Нет сети/сервер недоступен. Показаны сохранённые данные.'
-            : 'API вернул ошибку. Показаны сохранённые данные.';
+            : 'Сервер вернул ошибку. Показаны сохранённые данные.';
 
     return CustomScrollView(
       slivers: [
@@ -293,11 +293,7 @@ class _TodayScreenState extends State<TodayScreen> {
             style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w900),
           ),
           actions: [
-            IconButton(
-              tooltip: 'Сегодня',
-              onPressed: _goToToday,
-              icon: const Icon(Icons.today_rounded),
-            ),
+            IconButton(tooltip: 'Сегодня', onPressed: _goToToday, icon: const Icon(Icons.today_rounded)),
             const SizedBox(width: 4),
             IconButton.filledTonal(
               tooltip: 'Выбрать дату',

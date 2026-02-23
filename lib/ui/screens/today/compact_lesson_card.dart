@@ -239,8 +239,8 @@ class _MarkChipCompact extends StatelessWidget {
         label,
         style: TextStyle(
           color: colors.fg,
-          fontWeight: FontWeight.w900,
-          fontSize: 12,
+          fontWeight: FontWeight.w700,
+          fontSize: 17,
         ),
       ),
     );

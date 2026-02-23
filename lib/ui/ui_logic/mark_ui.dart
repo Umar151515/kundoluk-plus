@@ -28,13 +28,13 @@ class MarkUi {
     }
     return switch (t) {
       'general' => 'Оценка',
-      'control' => 'Контрольная',
+      'control' => 'Контрольная работа',
       'homework' => 'Домашняя работа',
       'test' => 'Тест',
-      'laboratory' => 'Лабораторная',
-      'write' => 'Письменная',
-      'practice' => 'Практическая',
-      _ => 'Тип: $t',
+      'laboratory' => 'Лабораторная работа',
+      'write' => 'Письменная работа',
+      'practice' => 'Практическая работа',
+      _ => 'Оценка',
     };
   }
 
@@ -57,28 +57,28 @@ class MarkUi {
   static String tooltip(MarkEntry e) {
     final parts = <String>[];
     parts.add('Предмет: ${e.subjectName}');
-    if (e.teacherName != null && e.teacherName!.trim().isNotEmpty) {
-      parts.add('Учитель: ${e.teacherName}');
-    }
+    if (e.teacherName != null && e.teacherName!.trim().isNotEmpty) parts.add('Учитель: ${e.teacherName}');
     parts.add('Тип: ${typeTitle(e.mark)}');
     parts.add('Значение: ${label(e.mark)}');
     parts.add('Дата урока: ${DateFormat('d MMM yyyy').format(e.lessonDate)}');
     if (e.lessonTime != null) parts.add('Время урока: ${e.lessonTime}');
     final t = e.markCreated?.toLocal();
     if (t != null) parts.add('Выставлено: ${DateFormat('d MMM yyyy, HH:mm').format(t)}');
+
     if (e.mark.absent == true) {
       parts.add('Отсутствие: да');
       if (e.mark.absentType != null && e.mark.absentType!.trim().isNotEmpty) {
-        parts.add('AbsentType: ${e.mark.absentType}');
+        parts.add('Тип отсутствия: ${e.mark.absentType}');
       }
       if ((e.mark.lateMinutes ?? 0) > 0) parts.add('Опоздание: ${e.mark.lateMinutes} мин');
       if (e.mark.absentReason != null && e.mark.absentReason!.trim().isNotEmpty) {
         parts.add('Причина: ${e.mark.absentReason}');
       }
+    } else {
+      if ((e.mark.lateMinutes ?? 0) > 0) parts.add('Опоздание: ${e.mark.lateMinutes} мин');
     }
-    if (e.mark.note != null && e.mark.note!.trim().isNotEmpty) {
-      parts.add('Комментарий: ${e.mark.note}');
-    }
+
+    if (e.mark.note != null && e.mark.note!.trim().isNotEmpty) parts.add('Комментарий: ${e.mark.note}');
     return parts.join('\n');
   }
 }

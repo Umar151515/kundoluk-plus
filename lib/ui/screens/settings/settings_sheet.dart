@@ -74,6 +74,7 @@ class _SettingsSheetState extends State<SettingsSheet> {
                   subtitle: Text('Тема, User-Agent, адрес API и блокировка'),
                 ),
                 const SizedBox(height: 6),
+
                 Card(
                   elevation: 0,
                   color: cs.surfaceContainerHighest,
@@ -118,7 +119,9 @@ class _SettingsSheetState extends State<SettingsSheet> {
                     ),
                   ),
                 ),
+
                 const SizedBox(height: 12),
+
                 Card(
                   elevation: 0,
                   color: cs.surfaceContainerHighest,
@@ -130,10 +133,7 @@ class _SettingsSheetState extends State<SettingsSheet> {
                           children: [
                             Icon(Icons.lock_rounded),
                             SizedBox(width: 10),
-                            Text(
-                              'Пароль на вход в приложение',
-                              style: TextStyle(fontWeight: FontWeight.w900),
-                            ),
+                            Text('Пароль на вход в приложение', style: TextStyle(fontWeight: FontWeight.w900)),
                           ],
                         ),
                         const SizedBox(height: 8),
@@ -204,7 +204,9 @@ class _SettingsSheetState extends State<SettingsSheet> {
                     ),
                   ),
                 ),
+
                 const SizedBox(height: 12),
+
                 Card(
                   elevation: 0,
                   color: cs.surfaceContainerHighest,
@@ -245,7 +247,7 @@ class _SettingsSheetState extends State<SettingsSheet> {
                           controller: _baseUrl,
                           decoration: const InputDecoration(
                             labelText: 'Base URL API',
-                            hintText: 'https://kundoluk.edu.gov.kg/api/',
+                            hintText: 'Оставь пустым, чтобы использовать стандартный',
                             prefixIcon: Icon(Icons.link_rounded),
                           ),
                         ),
@@ -255,7 +257,7 @@ class _SettingsSheetState extends State<SettingsSheet> {
                             Expanded(
                               child: OutlinedButton(
                                 onPressed: () {
-                                  setState(() => _baseUrl.text = AppSettingsStore.kDefaultBaseUrl);
+                                  setState(() => _baseUrl.text = widget.settings.defaultBaseUrl);
                                 },
                                 child: const Text('Сбросить Base URL'),
                               ),
@@ -266,6 +268,7 @@ class _SettingsSheetState extends State<SettingsSheet> {
                     ),
                   ),
                 ),
+
                 const SizedBox(height: 12),
                 SizedBox(
                   width: double.infinity,

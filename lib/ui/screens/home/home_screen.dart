@@ -67,6 +67,7 @@ class _HomeScreenState extends State<HomeScreen> {
       context: context,
       showDragHandle: true,
       isScrollControlled: true,
+      useSafeArea: true,
       builder: (_) => SettingsSheet(settings: widget.settings, appLock: widget.appLock),
     );
     if (!mounted) return;

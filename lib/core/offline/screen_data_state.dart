@@ -29,7 +29,7 @@ class ScreenDataState<T> {
   }
 
   ScreenDataState<T> copyWith({
-    Object? cache = _absent, // важно: Object? + sentinel
+    Object? cache = _absent,
     UiNetStatus? status,
     ApiFailure? error,
   }) {

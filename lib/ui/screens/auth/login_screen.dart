@@ -8,6 +8,7 @@ import '../../../data/stores/app_settings_store.dart';
 import '../../../data/stores/auth_store.dart';
 import '../../widgets/app_scaffold_max_width.dart';
 import '../../widgets/error_card.dart';
+import '../../widgets/web_cors_hint.dart';
 import '../home/home_screen.dart';
 import '../settings/settings_sheet.dart';
 import 'accounts_sheet.dart';
@@ -99,6 +100,7 @@ class _LoginScreenState extends State<LoginScreen> {
       context: context,
       showDragHandle: true,
       isScrollControlled: true,
+      useSafeArea: true,
       builder: (_) => SettingsSheet(settings: widget.settings, appLock: widget.appLock),
     );
   }
@@ -218,11 +220,7 @@ class _LoginScreenState extends State<LoginScreen> {
                 child: FilledButton(
                   onPressed: _loading ? null : () => _login(makeActive: true),
                   child: _loading
-                      ? const SizedBox(
-                          height: 20,
-                          width: 20,
-                          child: CircularProgressIndicator(strokeWidth: 2),
-                        )
+                      ? const SizedBox(height: 20, width: 20, child: CircularProgressIndicator(strokeWidth: 2))
                       : const Text('Войти'),
                 ),
               ),
@@ -244,6 +242,7 @@ class _LoginScreenState extends State<LoginScreen> {
                   child: Column(
                     children: [
                       header,
+                      WebCorsHint(settings: widget.settings),
                       const SizedBox(height: 14),
                       if (widget.auth.accounts.isNotEmpty) accountsHint,
                       if (widget.auth.accounts.isNotEmpty) const SizedBox(height: 12),
@@ -260,6 +259,7 @@ class _LoginScreenState extends State<LoginScreen> {
                     child: Column(
                       children: [
                         header,
+                        WebCorsHint(settings: widget.settings),
                         const SizedBox(height: 14),
                         accountsHint,
                         const SizedBox(height: 12),

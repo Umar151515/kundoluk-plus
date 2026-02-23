@@ -85,8 +85,8 @@ class KundolukApi {
         return ApiResponse.fail(
           ApiFailure(
             kind: ApiErrorKind.server,
-            title: 'Ошибка HTTP',
-            message: 'HTTP ${resp.statusCode}',
+            title: 'Ошибка сервера',
+            message: 'Сервер вернул HTTP ${resp.statusCode}.',
             httpStatus: resp.statusCode,
             details: resp.data,
           ),
@@ -101,8 +101,8 @@ class KundolukApi {
         return ApiResponse.fail(
           ApiFailure(
             kind: ApiErrorKind.parse,
-            title: 'Ошибка ответа',
-            message: 'Не удалось получить токен.',
+            title: 'Ошибка ответа сервера',
+            message: 'Не удалось получить токен авторизации.',
             details: map,
           ),
           data: Account(),
@@ -184,8 +184,8 @@ class KundolukApi {
         return ApiResponse.fail(
           ApiFailure(
             kind: ApiErrorKind.server,
-            title: 'Ошибка HTTP',
-            message: 'HTTP ${resp.statusCode}',
+            title: 'Ошибка сервера',
+            message: 'Сервер вернул HTTP ${resp.statusCode}.',
             httpStatus: resp.statusCode,
             details: resp.data,
           ),
@@ -198,7 +198,7 @@ class KundolukApi {
           ApiFailure(
             kind: ApiErrorKind.validation,
             title: 'Не удалось сменить пароль',
-            message: msg.isEmpty ? 'Ошибка смены пароля.' : msg,
+            message: msg.isEmpty ? 'Сервер не принял новый пароль.' : msg,
             details: map,
           ),
           resultCode: code,
@@ -278,8 +278,8 @@ class KundolukApi {
         return ApiResponse.fail(
           ApiFailure(
             kind: ApiErrorKind.server,
-            title: 'Ошибка API',
-            message: msg.isEmpty ? 'Ошибка API (resultCode=$code)' : msg,
+            title: 'Ошибка сервера',
+            message: msg.isEmpty ? 'Сервер вернул ошибку (код=$code).' : msg,
             details: json,
           ),
           resultCode: code,
@@ -297,6 +297,7 @@ class KundolukApi {
       final schedule = DailySchedule(date: day.dateOnly, lessons: lessons);
 
       await auth.saveToCache(CacheKeys.schedule(day), json);
+
       return ApiResponse.ok(schedule, message: msg);
     } on DioException catch (e) {
       return ApiResponse.fail(_mapping.mapDioToFailure(e), data: null);
@@ -306,6 +307,246 @@ class KundolukApi {
         data: null,
       );
     }
+  }
+
+  Future<ApiResponse<DailySchedules>> getScheduleRange({
+    required DateTime start,
+    required DateTime end,
+  }) async {
+    final authOk = await ensureAuthorized();
+    if (!authOk.isSuccess) {
+      return ApiResponse.fail(
+        authOk.failure!,
+        data: const DailySchedules(days: []),
+      );
+    }
+
+    try {
+      final resp = await dio.get(
+        '${baseUrl}student/gradebook/list',
+        queryParameters: {
+          'start_date': start.toApiDate(),
+          'end_date': end.toApiDate(),
+        },
+      );
+
+      final json = _mapping.asMap(resp.data);
+      final code = json.parseInt('resultCode') ?? 0;
+      final msg = (json['resultMessage'] ?? json['message'] ?? '').toString();
+      final action = json.containsKey('actionResult') ? json['actionResult'] : json;
+
+      if (resp.statusCode != 200) {
+        return ApiResponse.fail(
+          ApiFailure(
+            kind: ApiErrorKind.server,
+            title: 'Ошибка сервера',
+            message: 'Сервер вернул HTTP ${resp.statusCode}.',
+            httpStatus: resp.statusCode,
+            details: resp.data,
+          ),
+          data: const DailySchedules(days: []),
+        );
+      }
+
+      if (code != 0) {
+        return ApiResponse.fail(
+          ApiFailure(
+            kind: ApiErrorKind.server,
+            title: 'Ошибка сервера',
+            message: msg.isEmpty ? 'Сервер вернул ошибку (код=$code).' : msg,
+            details: json,
+          ),
+          resultCode: code,
+          data: const DailySchedules(days: []),
+        );
+      }
+
+      final list = _mapping.asList(action);
+      final lessons = list.map((e) => Lesson.fromJson(_mapping.asMap(e))).whereType<Lesson>().toList();
+
+      final daysMap = <DateTime, List<Lesson>>{};
+      for (final l in lessons) {
+        final d = l.lessonDay?.toLocal();
+        if (d == null) continue;
+        final day = DateTime(d.year, d.month, d.day);
+        daysMap.putIfAbsent(day, () => []).add(l);
+      }
+
+      final days = daysMap.entries
+          .map((e) {
+            final ls = [...e.value]..sort((a, b) => (a.lessonNumber ?? 999).compareTo(b.lessonNumber ?? 999));
+            return DailySchedule(date: e.key, lessons: ls);
+          })
+          .toList()
+        ..sort((a, b) => a.date.compareTo(b.date));
+
+      return ApiResponse.ok(DailySchedules(days: days), message: msg);
+    } on DioException catch (e) {
+      return ApiResponse.fail(
+        _mapping.mapDioToFailure(e),
+        data: const DailySchedules(days: []),
+      );
+    } catch (e) {
+      return ApiResponse.fail(
+        ApiFailure(kind: ApiErrorKind.unknown, title: 'Ошибка', message: e.toString()),
+        data: const DailySchedules(days: []),
+      );
+    }
+  }
+
+  Future<ApiResponse<DailySchedules>> getFullScheduleTerm(int term) async {
+    if (term < 1 || term > 4) {
+      return ApiResponse.fail(
+        ApiFailure(
+          kind: ApiErrorKind.validation,
+          title: 'Неверная четверть',
+          message: 'Четверть должна быть от 1 до 4.',
+        ),
+        data: const DailySchedules(days: []),
+      );
+    }
+
+    final authOk = await ensureAuthorized();
+    if (!authOk.isSuccess) {
+      return ApiResponse.fail(
+        authOk.failure!,
+        data: const DailySchedules(days: []),
+      );
+    }
+
+    try {
+      final now = DateTime.now();
+      final yearStart = now.month >= 9 ? now.year : now.year - 1;
+
+      final q = SchoolYear.quarters[term]!;
+      final startArr = q['start']!;
+      final endArr = q['end']!;
+      final y = term <= 2 ? yearStart : yearStart + 1;
+      final start = DateTime(y, startArr[0], startArr[1]);
+      final end = DateTime(y, endArr[0], endArr[1]);
+
+      final baseResp = await getScheduleRange(start: start, end: end);
+      if (!baseResp.isSuccess) {
+        return ApiResponse.fail(
+          baseResp.failure!,
+          data: const DailySchedules(days: []),
+        );
+      }
+
+      final base = baseResp.data;
+
+      final results = await Future.wait([
+        getScheduleWithMarks(term, absent: false),
+        getScheduleWithMarks(term, absent: true),
+      ]);
+
+      final marksResp = results[0];
+      final absentResp = results[1];
+
+      if (!marksResp.isSuccess && !absentResp.isSuccess) {
+        return ApiResponse.fail(
+          marksResp.failure ?? absentResp.failure!,
+          data: const DailySchedules(days: []),
+        );
+      }
+
+      final merged = _mergeQuarterData(
+        base: base,
+        extras: [
+          if (marksResp.isSuccess) marksResp.data,
+          if (absentResp.isSuccess) absentResp.data,
+        ],
+      );
+
+      final cacheJson = _serializeDailySchedulesToCacheJson(merged);
+      await auth.saveToCache(CacheKeys.fullTerm(term), cacheJson);
+
+      return ApiResponse.ok(merged, message: 'Расписание за четверть обновлено');
+    } on DioException catch (e) {
+      return ApiResponse.fail(
+        _mapping.mapDioToFailure(e),
+        data: const DailySchedules(days: []),
+      );
+    } catch (e) {
+      return ApiResponse.fail(
+        ApiFailure(kind: ApiErrorKind.unknown, title: 'Ошибка', message: e.toString()),
+        data: const DailySchedules(days: []),
+      );
+    }
+  }
+
+  Future<DailySchedules?> loadFullScheduleTermFromCache(int term) async {
+    final json = await auth.loadFromCache(CacheKeys.fullTerm(term));
+    if (json == null) return null;
+
+    try {
+      final action = json['actionResult'];
+      if (action is! List) return null;
+
+      final lessons = action.map((e) => Lesson.fromJson(_mapping.asMap(e))).whereType<Lesson>().toList();
+
+      final daysMap = <DateTime, List<Lesson>>{};
+      for (final l in lessons) {
+        final d = l.lessonDay?.toLocal();
+        if (d == null) continue;
+        final day = DateTime(d.year, d.month, d.day);
+        daysMap.putIfAbsent(day, () => []).add(l);
+      }
+
+      final days = daysMap.entries
+          .map((e) {
+            final ls = [...e.value]..sort((a, b) => (a.lessonNumber ?? 999).compareTo(b.lessonNumber ?? 999));
+            return DailySchedule(date: e.key, lessons: ls);
+          })
+          .toList()
+        ..sort((a, b) => a.date.compareTo(b.date));
+
+      return DailySchedules(days: days);
+    } catch (_) {
+      return null;
+    }
+  }
+
+  DailySchedules _mergeQuarterData({
+    required DailySchedules base,
+    required List<DailySchedules> extras,
+  }) {
+    String makeKey(Lesson l, DateTime day) {
+      final uid = l.uid;
+      if (uid != null && uid.trim().isNotEmpty) return 'uid:$uid';
+
+      final num = l.lessonNumber ?? -1;
+      final subj = (l.subject?.nameRu ?? l.subject?.name ?? '').trim();
+      return 'fb:${day.toIso8601String()}:$num:$subj';
+    }
+
+    final marksByKey = <String, List<Mark>>{};
+
+    for (final ex in extras) {
+      for (final day in ex.days) {
+        for (final lesson in day.lessons) {
+          if (lesson.marks.isEmpty) continue;
+          final k = makeKey(lesson, day.date);
+          marksByKey.putIfAbsent(k, () => []).addAll(lesson.marks);
+        }
+      }
+    }
+
+    final mergedDays = base.days.map((day) {
+      final mergedLessons = day.lessons.map((lesson) {
+        final k = makeKey(lesson, day.date);
+        final extraMarks = marksByKey[k];
+        if (extraMarks == null || extraMarks.isEmpty) return lesson;
+        final mergedMarks = _uniqueMarks([...lesson.marks, ...extraMarks]);
+        return lesson.copyWith(marks: mergedMarks);
+      }).toList();
+
+      mergedLessons.sort((a, b) => (a.lessonNumber ?? 999).compareTo(b.lessonNumber ?? 999));
+      return DailySchedule(date: day.date, lessons: mergedLessons);
+    }).toList();
+
+    mergedDays.sort((a, b) => a.date.compareTo(b.date));
+    return DailySchedules(days: mergedDays);
   }
 
   Future<ApiResponse<DailySchedule?>> getFullScheduleDay(DateTime day) async {
@@ -358,7 +599,7 @@ class KundolukApi {
     final mergedLessons = dailySchedule.lessons.map((lesson) {
       final uid = lesson.uid;
       if (uid != null && marksByLessonUid.containsKey(uid)) {
-        final uniqueMarks = _uniqueMarks(marksByLessonUid[uid]!);
+        final uniqueMarks = _uniqueMarks([...lesson.marks, ...marksByLessonUid[uid]!]);
         return lesson.copyWith(marks: uniqueMarks);
       }
       return lesson;
@@ -366,10 +607,12 @@ class KundolukApi {
 
     mergedLessons.sort((a, b) => (a.lessonNumber ?? 999).compareTo(b.lessonNumber ?? 999));
 
-    return ApiResponse.ok(
-      DailySchedule(date: dailySchedule.date, lessons: mergedLessons),
-      message: 'Расписание обновлено',
-    );
+    final fullDay = DailySchedule(date: dailySchedule.date, lessons: mergedLessons);
+
+    final cacheJson = _serializeDailyScheduleToCacheJson(fullDay);
+    await auth.saveToCache(CacheKeys.schedule(day), cacheJson);
+
+    return ApiResponse.ok(fullDay, message: 'Расписание обновлено');
   }
 
   List<Mark> _uniqueMarks(List<Mark> marks) {
@@ -387,6 +630,163 @@ class KundolukApi {
     final result = map.values.toList();
     result.sort((a, b) => (b.createdAt ?? DateTime(1970)).compareTo(a.createdAt ?? DateTime(1970)));
     return result;
+  }
+
+  Map<String, dynamic> _serializeDailyScheduleToCacheJson(DailySchedule day) {
+    final lessons = day.lessons.map(_lessonToJsonForCache).toList();
+    return {
+      'resultCode': 0,
+      'resultMessage': 'OK (cache)',
+      'actionResult': lessons,
+    };
+  }
+
+  Map<String, dynamic> _serializeDailySchedulesToCacheJson(DailySchedules schedules) {
+    final lessons = <Map<String, dynamic>>[];
+    for (final d in schedules.days) {
+      for (final l in d.lessons) {
+        lessons.add(_lessonToJsonForCache(l));
+      }
+    }
+    return {
+      'resultCode': 0,
+      'resultMessage': 'OK (cache)',
+      'actionResult': lessons,
+    };
+  }
+
+  Map<String, dynamic> _lessonToJsonForCache(Lesson l) {
+    return <String, dynamic>{
+      'uid': l.uid,
+      'scheduleItemId': l.scheduleItemId,
+      'teacher': l.teacher == null
+          ? null
+          : {
+              'pin': l.teacher!.pin,
+              'pinAsString': l.teacher!.pinAsString,
+              'firstName': l.teacher!.firstName,
+              'lastName': l.teacher!.lastName,
+              'midName': l.teacher!.midName,
+            },
+      'subject': l.subject == null
+          ? null
+          : {
+              'code': l.subject!.code,
+              'name': l.subject!.name,
+              'nameKg': l.subject!.nameKg,
+              'nameRu': l.subject!.nameRu,
+              'short': l.subject!.short,
+              'shortKg': l.subject!.shortKg,
+              'shortRu': l.subject!.shortRu,
+              'grade': l.subject!.grade,
+            },
+      'roomData': l.room == null
+          ? null
+          : {
+              'id': l.room!.idRoom,
+              'roomName': l.room!.roomName,
+              'floor': l.room!.floor,
+              'block': l.room!.block,
+            },
+      'startTime': l.startTime,
+      'endTime': l.endTime,
+      'lessonTime': l.lessonTime,
+      'lessonDay': l.lessonDay?.toIso8601String(),
+      'year': l.year,
+      'month': l.month,
+      'day': l.day,
+      'lesson': l.lessonNumber,
+      'student': l.student == null
+          ? null
+          : {
+              'scheduleItemId': l.student!.scheduleItemId,
+              'lessonDay': l.student!.lessonDay?.toIso8601String(),
+              'lessonDayAsDateOnly': l.student!.lessonDayAsDateOnly?.toIso8601String(),
+              'objectId': l.student!.objectId,
+              'schoolId': l.student!.schoolId,
+              'gradeId': l.student!.gradeId,
+              'okpo': l.student!.okpo,
+              'pin': l.student!.pin,
+              'pinAsString': l.student!.pinAsString,
+              'grade': l.student!.grade,
+              'letter': l.student!.letter,
+              'name': l.student!.name,
+              'lastName': l.student!.lastName,
+              'firstName': l.student!.firstName,
+              'midName': l.student!.midName,
+              'email': l.student!.email,
+              'phone': l.student!.phone,
+              'groupId': l.student!.groupId,
+              'subjectGroupName': l.student!.subjectGroupName,
+              'districtName': l.student!.districtName,
+              'cityName': l.student!.cityName,
+            },
+      'marks': l.marks
+          .map((m) => {
+                'mark_id': m.markId,
+                'ls_uid': m.lsUid,
+                'uid': m.uid,
+                'idStudent': m.studentId,
+                'student_pin': m.studentPin,
+                'student_pin_as_string': m.studentPinAsString,
+                'first_name': m.firstName,
+                'last_name': m.lastName,
+                'mid_name': m.midName,
+                'mark': m.value,
+                'mark_type': m.markType,
+                'old_mark': m.oldMark,
+                'custom_mark': m.customMark,
+                'absent': m.absent,
+                'absent_type': m.absentType,
+                'absent_reason': m.absentReason,
+                'late_minutes': m.lateMinutes,
+                'note': m.note,
+                'created_at': m.createdAt?.toIso8601String(),
+                'updated_at': m.updatedAt?.toIso8601String(),
+                'success': m.success,
+              })
+          .toList(),
+      'topic': l.topic == null
+          ? null
+          : {
+              'code': l.topic!.code,
+              'name': l.topic!.name,
+              'short': l.topic!.short,
+              'lessonDay': l.topic!.lessonDay?.toIso8601String(),
+            },
+      'task': l.task == null
+          ? null
+          : {
+              'code': l.task!.code,
+              'name': l.task!.name,
+              'note': l.task!.note,
+              'lessonDay': l.task!.lessonDay?.toIso8601String(),
+            },
+      'lastTask': l.lastTask == null
+          ? null
+          : {
+              'code': l.lastTask!.code,
+              'name': l.lastTask!.name,
+              'note': l.lastTask!.note,
+              'lessonDay': l.lastTask!.lessonDay?.toIso8601String(),
+            },
+      'okpo': l.okpo,
+      'gradeId': l.gradeId,
+      'grade': l.grade,
+      'letter': l.letter,
+      'isKrujok': l.isKrujok,
+      'group': l.group,
+      'groupId': l.groupId,
+      'subjectGroupName': l.subjectGroupName,
+      'shift': l.shift,
+      'dayOfWeek': l.dayOfWeek,
+      'school': l.schoolId,
+      'schoolNameKg': l.schoolNameKg,
+      'schoolNameRu': l.schoolNameRu,
+      'isContentSubject': l.isContentSubject,
+      'isTwelve': l.isTwelve,
+      'orderIndex': l.orderIndex,
+    };
   }
 
   Future<ApiResponse<DailySchedules>> getScheduleWithMarks(
@@ -416,8 +816,8 @@ class KundolukApi {
         return ApiResponse.fail(
           ApiFailure(
             kind: ApiErrorKind.server,
-            title: 'Ошибка API',
-            message: msg.isEmpty ? 'Ошибка API (resultCode=$code)' : msg,
+            title: 'Ошибка сервера',
+            message: msg.isEmpty ? 'Сервер вернул ошибку (код=$code).' : msg,
             details: json,
           ),
           resultCode: code,
@@ -477,8 +877,8 @@ class KundolukApi {
         return ApiResponse.fail(
           ApiFailure(
             kind: ApiErrorKind.server,
-            title: 'Ошибка API',
-            message: msg.isEmpty ? 'Ошибка API (resultCode=$code)' : msg,
+            title: 'Ошибка сервера',
+            message: msg.isEmpty ? 'Сервер вернул ошибку (код=$code).' : msg,
             details: json,
           ),
           resultCode: code,

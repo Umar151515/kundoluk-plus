@@ -33,13 +33,13 @@ class _AppGateState extends State<AppGate> with WidgetsBindingObserver {
   @override
   void initState() {
     super.initState();
-    WidgetsBinding.instance.addObserver(this); // <-- совместимее
+    WidgetsBinding.instance.addObserver(this);
     _locked = widget.appLock.enabled && widget.appLock.hasPasscode;
   }
 
   @override
   void dispose() {
-    WidgetsBinding.instance.removeObserver(this); // <-- совместимее
+    WidgetsBinding.instance.removeObserver(this);
     super.dispose();
   }
 
