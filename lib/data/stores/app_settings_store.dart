@@ -9,6 +9,7 @@ class AppSettingsStore extends ChangeNotifier {
   static const String _kThemeMode = 'theme_mode';
   static const String _kBaseUrl = 'base_url';
   static const String _kUserAgent = 'user_agent';
+  static const String _kSeedColor = 'seed_color';
 
   static const String kDefaultBaseUrlMobile = 'https://kundoluk.edu.gov.kg/api/';
   static const String kDefaultBaseUrlWeb = 'https://cors-anywhere.herokuapp.com/https://kundoluk.edu.gov.kg/api/';
@@ -17,6 +18,9 @@ class AppSettingsStore extends ChangeNotifier {
   ThemeMode themeMode = ThemeMode.system;
   String baseUrl = kDefaultBaseUrlMobile;
   String userAgent = kDefaultUserAgent;
+  int seedColorValue = Colors.indigo.value;
+
+  Color get seedColor => Color(seedColorValue);
 
   String get defaultBaseUrl => kIsWeb ? kDefaultBaseUrlWeb : kDefaultBaseUrlMobile;
 
@@ -40,6 +44,7 @@ class AppSettingsStore extends ChangeNotifier {
     baseUrl = baseUrl.endsWith('/') ? baseUrl : '$baseUrl/';
 
     userAgent = prefs.getString(_kUserAgent) ?? kDefaultUserAgent;
+    seedColorValue = prefs.getInt(_kSeedColor) ?? Colors.indigo.value;
     notifyListeners();
   }
 
@@ -70,4 +75,10 @@ class AppSettingsStore extends ChangeNotifier {
   }
 
   Future<void> resetUserAgent() => setUserAgent(kDefaultUserAgent);
+
+  Future<void> setSeedColor(Color color) async {
+    seedColorValue = color.value;
+    await prefs.setInt(_kSeedColor, seedColorValue);
+    notifyListeners();
+  }
 }

@@ -76,6 +76,12 @@ class MarkUi {
       }
     } else {
       if ((e.mark.lateMinutes ?? 0) > 0) parts.add('Опоздание: ${e.mark.lateMinutes} мин');
+      if (e.mark.absentType != null && e.mark.absentType!.trim().isNotEmpty) {
+        parts.add('Тип отметки: ${e.mark.absentType}');
+      }
+      if (e.mark.absentReason != null && e.mark.absentReason!.trim().isNotEmpty) {
+        parts.add('Причина: ${e.mark.absentReason}');
+      }
     }
 
     if (e.mark.note != null && e.mark.note!.trim().isNotEmpty) parts.add('Комментарий: ${e.mark.note}');

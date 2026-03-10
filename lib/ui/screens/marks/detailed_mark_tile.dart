@@ -4,6 +4,7 @@ import 'package:intl/intl.dart';
 import '../../../domain/models/mark.dart';
 import '../../ui_logic/mark_ui.dart';
 import '../../widgets/chips.dart';
+import '../../widgets/late_info_badge.dart';
 
 class DetailedMarkTile extends StatelessWidget {
   final Mark mark;
@@ -12,6 +13,7 @@ class DetailedMarkTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
+    final hasLate = mark.lateMinutes != null && mark.lateMinutes! > 0;
 
     final label = MarkUi.label(mark);
     final colors = MarkUi.colors(context, mark);
@@ -55,10 +57,15 @@ class DetailedMarkTile extends StatelessWidget {
             children: [
               if (mark.markType != null) AppChip(label: 'MarkType', value: mark.markType!),
               if (mark.absent == true) const _InlinePill(icon: Icons.report_rounded, text: 'Отсутствие'),
-              if (mark.absentType != null && mark.absentType!.trim().isNotEmpty)
+              if (!hasLate && mark.absentType != null && mark.absentType!.trim().isNotEmpty)
                 AppChip(label: 'AbsentType', value: mark.absentType!),
-              if (mark.lateMinutes != null && mark.lateMinutes! > 0) AppChip(label: 'Опоздание', value: '${mark.lateMinutes} мин'),
-              if (mark.absentReason != null && mark.absentReason!.trim().isNotEmpty)
+              if (hasLate)
+                LateInfoBadge(
+                  minutes: mark.lateMinutes!,
+                  type: mark.absentType,
+                  reason: mark.absentReason,
+                ),
+              if (!hasLate && mark.absentReason != null && mark.absentReason!.trim().isNotEmpty)
                 AppChip(label: 'Причина', value: mark.absentReason!),
             ],
           ),

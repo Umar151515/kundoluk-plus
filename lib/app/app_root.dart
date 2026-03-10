@@ -26,7 +26,15 @@ class AppRoot extends StatelessWidget {
     return AnimatedBuilder(
       animation: Listenable.merge([settings, auth, appLock]),
       builder: (_, _) {
-        final seed = Colors.indigo;
+        final seed = settings.seedColor;
+        final lightScheme = ColorScheme.fromSeed(
+          seedColor: seed,
+          brightness: Brightness.light,
+        );
+        final darkScheme = ColorScheme.fromSeed(
+          seedColor: seed,
+          brightness: Brightness.dark,
+        );
 
         return MaterialApp(
           debugShowCheckedModeBanner: false,
@@ -44,7 +52,7 @@ class AppRoot extends StatelessWidget {
           themeMode: settings.themeMode,
           theme: ThemeData(
             useMaterial3: true,
-            colorSchemeSeed: seed,
+            colorScheme: lightScheme,
             visualDensity: VisualDensity.standard,
             cardTheme: const CardThemeData(elevation: 0),
             snackBarTheme: const SnackBarThemeData(
@@ -58,8 +66,7 @@ class AppRoot extends StatelessWidget {
           ),
           darkTheme: ThemeData(
             useMaterial3: true,
-            brightness: Brightness.dark,
-            colorSchemeSeed: seed,
+            colorScheme: darkScheme,
             cardTheme: const CardThemeData(elevation: 0),
             snackBarTheme: const SnackBarThemeData(
               behavior: SnackBarBehavior.floating,

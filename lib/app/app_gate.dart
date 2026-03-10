@@ -29,6 +29,7 @@ class AppGate extends StatefulWidget {
 class _AppGateState extends State<AppGate> with WidgetsBindingObserver {
   bool _locked = false;
   DateTime? _backgroundedAt;
+  DateTime? _justUnlockedAt;
 
   @override
   void initState() {
@@ -56,11 +57,20 @@ class _AppGateState extends State<AppGate> with WidgetsBindingObserver {
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (!(widget.appLock.enabled && widget.appLock.hasPasscode)) return;
 
+    // On Android the biometric prompt may transiently pause/resume the app.
+    // Don't treat that as backgrounding, otherwise "timeout immediately" can cause a relock loop.
+    if (widget.appLock.biometricAuthInProgress) return;
+
     if (state == AppLifecycleState.paused || state == AppLifecycleState.inactive) {
       _backgroundedAt = DateTime.now();
     }
 
     if (state == AppLifecycleState.resumed) {
+      final justUnlockedAt = _justUnlockedAt;
+      if (justUnlockedAt != null &&
+          DateTime.now().difference(justUnlockedAt).inMilliseconds < 1200) {
+        return;
+      }
       final t = widget.appLock.timeoutSec;
       if (t <= 0) {
         setState(() => _locked = true);
@@ -79,7 +89,11 @@ class _AppGateState extends State<AppGate> with WidgetsBindingObserver {
     if (_locked) {
       return AppLockScreen(
         appLock: widget.appLock,
-        onUnlocked: () => setState(() => _locked = false),
+        onUnlocked: () => setState(() {
+          _locked = false;
+          _backgroundedAt = null;
+          _justUnlockedAt = DateTime.now();
+        }),
       );
     }
 

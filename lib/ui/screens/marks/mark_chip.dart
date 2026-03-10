@@ -9,7 +9,8 @@ class MarkChip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final label = entry.label;
+    final isLate = (entry.mark.lateMinutes ?? 0) > 0;
+    final label = isLate ? 'ОП ${entry.mark.lateMinutes}м' : entry.label;
     final colors = MarkUi.colors(context, entry.mark);
 
     return Tooltip(
@@ -21,9 +22,18 @@ class MarkChip extends StatelessWidget {
           color: colors.bg,
           borderRadius: BorderRadius.circular(999),
         ),
-        child: Text(
-          label,
-          style: TextStyle(color: colors.fg, fontWeight: FontWeight.w900),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            if (isLate) ...[
+              Icon(Icons.alarm_rounded, size: 16, color: colors.fg),
+              const SizedBox(width: 6),
+            ],
+            Text(
+              label,
+              style: TextStyle(color: colors.fg, fontWeight: FontWeight.w900),
+            ),
+          ],
         ),
       ),
     );

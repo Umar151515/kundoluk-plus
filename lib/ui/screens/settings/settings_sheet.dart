@@ -15,12 +15,28 @@ class SettingsSheet extends StatefulWidget {
 }
 
 class _SettingsSheetState extends State<SettingsSheet> {
+  static const List<int> _seedPalette = [
+    0xFF3F51B5, // indigo
+    0xFF1976D2, // blue
+    0xFF00897B, // teal
+    0xFF2E7D32, // green
+    0xFFF9A825, // amber
+    0xFFEF6C00, // orange
+    0xFFC62828, // red
+    0xFFAD1457, // pink
+    0xFF6A1B9A, // purple
+    0xFF455A64, // blue grey
+  ];
+
   late ThemeMode _mode;
   late TextEditingController _baseUrl;
   late TextEditingController _ua;
+  late int _seedColorValue;
 
   bool _lockEnabled = false;
   int _lockTimeout = 60;
+  bool _biometricEnabled = false;
+  bool _biometricAvailable = false;
 
   @override
   void initState() {
@@ -28,8 +44,17 @@ class _SettingsSheetState extends State<SettingsSheet> {
     _mode = widget.settings.themeMode;
     _baseUrl = TextEditingController(text: widget.settings.baseUrl);
     _ua = TextEditingController(text: widget.settings.userAgent);
+    _seedColorValue = widget.settings.seedColorValue;
     _lockEnabled = widget.appLock.enabled;
     _lockTimeout = widget.appLock.timeoutSec;
+    _biometricEnabled = widget.appLock.biometricEnabled;
+    _loadBiometricAvailability();
+  }
+
+  Future<void> _loadBiometricAvailability() async {
+    final available = await widget.appLock.canUseBiometrics();
+    if (!mounted) return;
+    setState(() => _biometricAvailable = available);
   }
 
   @override
@@ -47,7 +72,10 @@ class _SettingsSheetState extends State<SettingsSheet> {
     if (!mounted) return;
     if (res == null) return;
     await widget.appLock.setPasscode(res);
-    setState(() => _lockEnabled = widget.appLock.enabled);
+    setState(() {
+      _lockEnabled = widget.appLock.enabled;
+      _biometricEnabled = widget.appLock.biometricEnabled;
+    });
   }
 
   @override
@@ -115,6 +143,49 @@ class _SettingsSheetState extends State<SettingsSheet> {
                             await widget.settings.setThemeMode(v);
                           },
                         ),
+                        const SizedBox(height: 12),
+                        Align(
+                          alignment: Alignment.centerLeft,
+                          child: Text(
+                            'Цвет темы',
+                            style: TextStyle(
+                              color: cs.onSurfaceVariant,
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                        ),
+                        const SizedBox(height: 10),
+                        Wrap(
+                          spacing: 10,
+                          runSpacing: 10,
+                          children: _seedPalette.map((v) {
+                            final color = Color(v);
+                            final selected = v == _seedColorValue;
+                            return InkWell(
+                              borderRadius: BorderRadius.circular(999),
+                              onTap: () async {
+                                setState(() => _seedColorValue = v);
+                                await widget.settings.setSeedColor(color);
+                              },
+                              child: AnimatedContainer(
+                                duration: const Duration(milliseconds: 160),
+                                width: 36,
+                                height: 36,
+                                decoration: BoxDecoration(
+                                  color: color,
+                                  shape: BoxShape.circle,
+                                  border: Border.all(
+                                    color: selected ? cs.onSurface : cs.outlineVariant,
+                                    width: selected ? 3 : 1.5,
+                                  ),
+                                ),
+                                child: selected
+                                    ? const Icon(Icons.check_rounded, size: 18, color: Colors.white)
+                                    : null,
+                              ),
+                            );
+                          }).toList(),
+                        ),
                       ],
                     ),
                   ),
@@ -170,7 +241,10 @@ class _SettingsSheetState extends State<SettingsSheet> {
                                     ? () async {
                                         await widget.appLock.clearPasscode();
                                         if (!mounted) return;
-                                        setState(() => _lockEnabled = widget.appLock.enabled);
+                                        setState(() {
+                                          _lockEnabled = widget.appLock.enabled;
+                                          _biometricEnabled = widget.appLock.biometricEnabled;
+                                        });
                                       }
                                     : null,
                                 icon: const Icon(Icons.delete_outline_rounded),
@@ -180,6 +254,24 @@ class _SettingsSheetState extends State<SettingsSheet> {
                           ],
                         ),
                         const SizedBox(height: 10),
+                        SwitchListTile.adaptive(
+                          value: _biometricEnabled,
+                          onChanged: (!_lockEnabled || !widget.appLock.hasPasscode || !_biometricAvailable)
+                              ? null
+                              : (v) async {
+                                  await widget.appLock.setBiometricEnabled(v);
+                                  if (!mounted) return;
+                                  setState(() => _biometricEnabled = v);
+                                },
+                          title: const Text('Вход по биометрии'),
+                          subtitle: Text(
+                            !_biometricAvailable
+                                ? 'Недоступно на этом устройстве'
+                                : (_biometricEnabled ? 'Включено' : 'Выключено'),
+                          ),
+                          contentPadding: EdgeInsets.zero,
+                        ),
+                        const SizedBox(height: 6),
                         Row(
                           children: [
                             const Text('Таймаут блокировки:', style: TextStyle(fontWeight: FontWeight.w800)),

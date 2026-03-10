@@ -1,5 +1,6 @@
 import '../../core/extensions/map_x.dart';
 import 'school.dart';
+import 'user_role.dart';
 
 class Account {
   final String? userId;
@@ -42,13 +43,14 @@ class Account {
     this.school,
   });
 
-  String get fio => [
-        lastName,
-        firstName,
-        midName,
-      ].where((e) => e != null && e.trim().isNotEmpty).map((e) => e!.trim()).join(' ').trim();
+  String get fio => [lastName, firstName, midName]
+      .where((e) => e != null && e.trim().isNotEmpty)
+      .map((e) => e!.trim())
+      .join(' ')
+      .trim();
 
   String get classLabel => '${grade ?? '?'}${letter ?? ''}';
+  UserRole get userRole => UserRoleX.fromApiValue(role);
 
   static Account fromJson(Map<String, dynamic> json) {
     String? pickStr(List<String> keys) {
@@ -78,7 +80,9 @@ class Account {
       changePassword: json.parseBool('changePassword'),
       role: pickStr(['type', 'role']),
       birthdate: json.parseDateTime('birthdate'),
-      school: schoolJson is Map ? School.fromJson(schoolJson.cast<String, dynamic>()) : null,
+      school: schoolJson is Map
+          ? School.fromJson(schoolJson.cast<String, dynamic>())
+          : null,
     );
   }
 }
