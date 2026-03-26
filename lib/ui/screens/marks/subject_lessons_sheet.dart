@@ -58,10 +58,18 @@ class SubjectQuarterLessonsContent extends StatelessWidget {
 
         final rows = bloc.buildRows(subjectName);
         final today = DateTime.now().dateOnly;
-        final upcoming = rows.where((r) => r.date.isAfter(today)).toList()
-          ..sort((a, b) => a.date.compareTo(b.date));
-        final pastOrToday = rows.where((r) => !r.date.isAfter(today)).toList()
-          ..sort((a, b) => b.date.compareTo(a.date));
+        final passedLessonsCount = rows
+            .where((row) => !row.date.isAfter(today))
+            .length;
+        final remainingLessonsCount = rows
+            .where((row) => row.date.isAfter(today))
+            .length;
+        final groupedRows = <DateTime, List<SubjectLessonRow>>{};
+        for (final row in rows) {
+          groupedRows.putIfAbsent(row.date, () => []).add(row);
+        }
+        final sortedDates = groupedRows.keys.toList()
+          ..sort((a, b) => b.compareTo(a));
 
         final showOfflineBanner = state.status == UiNetStatus.offlineUsingCache;
         final offlineSubtitle = state.error == null
@@ -134,8 +142,7 @@ class SubjectQuarterLessonsContent extends StatelessWidget {
               Expanded(
                 child: EmptyView(
                   title: 'Пусто',
-                  subtitle:
-                      'Уроков по этому предмету за выбранную четверть нет.',
+                  subtitle: 'Уроков по этому предмету за выбранную четверть нет.',
                   onRetry: () =>
                       bloc.add(SubjectQuarterLessonsRefreshRequested()),
                 ),
@@ -151,52 +158,38 @@ class SubjectQuarterLessonsContent extends StatelessWidget {
                         onRetry: () =>
                             bloc.add(SubjectQuarterLessonsRefreshRequested()),
                       ),
-                    if (upcoming.isNotEmpty) ...[
-                      const SizedBox(height: 10),
-                      const _SectionTitle(
-                        icon: Icons.schedule_rounded,
-                        title: 'Еще будут',
-                        subtitle: 'Уроки, которые еще не начались',
-                      ),
-                      const SizedBox(height: 8),
-                      ...upcoming.map(
-                        (row) => _LessonRowTile(
-                          row: row,
-                          isUpcoming: true,
-                          onTap: () => Navigator.of(context).push(
-                            MaterialPageRoute(
-                              builder: (_) => LessonDetailsScreen(
-                                lesson: row.lesson,
-                                api: bloc.api,
-                              ),
-                            ),
-                          ),
+                    const SizedBox(height: 10),
+                    Wrap(
+                      spacing: 8,
+                      runSpacing: 8,
+                      children: [
+                        _CountChip(
+                          icon: Icons.check_circle_outline_rounded,
+                          label: 'Прошло',
+                          value: '$passedLessonsCount',
                         ),
-                      ),
-                    ],
-                    if (pastOrToday.isNotEmpty) ...[
-                      const SizedBox(height: 12),
-                      const _SectionTitle(
-                        icon: Icons.history_rounded,
-                        title: 'Уже были',
-                        subtitle: 'Уроки, которые уже прошли',
-                      ),
-                      const SizedBox(height: 8),
-                      ...pastOrToday.map(
-                        (row) => _LessonRowTile(
-                          row: row,
-                          isUpcoming: false,
-                          onTap: () => Navigator.of(context).push(
-                            MaterialPageRoute(
-                              builder: (_) => LessonDetailsScreen(
-                                lesson: row.lesson,
-                                api: bloc.api,
-                              ),
-                            ),
-                          ),
+                        _CountChip(
+                          icon: Icons.schedule_rounded,
+                          label: 'Осталось',
+                          value: '$remainingLessonsCount',
                         ),
-                      ),
-                    ],
+                      ],
+                    ),
+                    const SizedBox(height: 10),
+                    ...sortedDates.map((date) {
+                      final dayRows = groupedRows[date]!..sort(
+                        (a, b) => (a.lesson.lessonNumber ?? 999).compareTo(
+                          b.lesson.lessonNumber ?? 999,
+                        ),
+                      );
+                      return _LessonDaySection(
+                        date: date,
+                        rows: dayRows,
+                        isToday: date.isSameDate(today),
+                        isUpcoming: date.isAfter(today),
+                        api: bloc.api,
+                      );
+                    }),
                     if (!fullScreen) ...[
                       const SizedBox(height: 16),
                       SizedBox(
@@ -235,72 +228,153 @@ class SubjectQuarterLessonsContent extends StatelessWidget {
   }
 }
 
-class _SectionTitle extends StatelessWidget {
+class _CountChip extends StatelessWidget {
   final IconData icon;
-  final String title;
-  final String subtitle;
+  final String label;
+  final String value;
 
-  const _SectionTitle({
+  const _CountChip({
     required this.icon,
-    required this.title,
-    required this.subtitle,
+    required this.label,
+    required this.value,
   });
 
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
-    return Row(
-      children: [
-        Icon(icon, color: cs.primary),
-        const SizedBox(width: 10),
-        Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      decoration: BoxDecoration(
+        color: cs.surfaceContainerHighest,
+        borderRadius: BorderRadius.circular(14),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 18, color: cs.primary),
+          const SizedBox(width: 8),
+          Text(
+            '$label: $value',
+            style: const TextStyle(fontWeight: FontWeight.w800),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _LessonDaySection extends StatelessWidget {
+  final DateTime date;
+  final List<SubjectLessonRow> rows;
+  final bool isToday;
+  final bool isUpcoming;
+  final KundolukApi api;
+
+  const _LessonDaySection({
+    required this.date,
+    required this.rows,
+    required this.isToday,
+    required this.isUpcoming,
+    required this.api,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    final badgeText = isToday
+        ? 'Сегодня'
+        : isUpcoming
+        ? 'Будет'
+        : 'Было';
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 12),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: cs.surfaceContainerLowest,
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: cs.outlineVariant.withValues(alpha: 0.7)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
             children: [
-              Text(
-                title,
-                style: const TextStyle(
-                  fontWeight: FontWeight.w900,
-                  fontSize: 16,
+              Expanded(
+                child: Text(
+                  date.russianTextDateWithWeekday,
+                  style: const TextStyle(
+                    fontWeight: FontWeight.w900,
+                    fontSize: 15,
+                  ),
                 ),
               ),
-              const SizedBox(height: 2),
-              Text(subtitle, style: TextStyle(color: cs.onSurfaceVariant)),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                decoration: BoxDecoration(
+                  color: isToday
+                      ? cs.primaryContainer
+                      : isUpcoming
+                      ? cs.tertiaryContainer
+                      : cs.surfaceContainerHighest,
+                  borderRadius: BorderRadius.circular(999),
+                ),
+                child: Text(
+                  badgeText,
+                  style: TextStyle(
+                    color: isToday
+                        ? cs.onPrimaryContainer
+                        : isUpcoming
+                        ? cs.onTertiaryContainer
+                        : cs.onSurfaceVariant,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+              ),
             ],
           ),
-        ),
-      ],
+          const SizedBox(height: 10),
+          ...rows.map(
+            (row) => _LessonRowTile(
+              row: row,
+              onTap: () => Navigator.of(context).push(
+                MaterialPageRoute(
+                  builder: (_) => LessonDetailsScreen(
+                    lesson: row.lesson,
+                    api: api,
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
     );
   }
 }
 
 class _LessonRowTile extends StatelessWidget {
   final SubjectLessonRow row;
-  final bool isUpcoming;
   final VoidCallback onTap;
 
   const _LessonRowTile({
     required this.row,
-    required this.isUpcoming,
     required this.onTap,
   });
 
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
-    final subject =
-        row.lesson.subject?.nameRu ?? row.lesson.subject?.name ?? 'Предмет';
-    final day =
-        '${row.date.day.toString().padLeft(2, '0')}.${row.date.month.toString().padLeft(2, '0')}.${row.date.year}';
     final lessonNo = row.lesson.lessonNumber != null
         ? 'Урок №${row.lesson.lessonNumber}'
         : 'Урок';
     final time = (row.lesson.startTime != null && row.lesson.endTime != null)
         ? '${row.lesson.startTime} - ${row.lesson.endTime}'
-        : 'Время не указано';
+        : null;
+    final marksText = row.marksShort == '—' ? null : row.marksShort;
 
     return InkWell(
-      borderRadius: BorderRadius.circular(16),
+      borderRadius: BorderRadius.circular(14),
       onTap: onTap,
       child: Container(
         margin: const EdgeInsets.symmetric(vertical: 5),
@@ -308,11 +382,7 @@ class _LessonRowTile extends StatelessWidget {
         decoration: BoxDecoration(
           color: cs.surfaceContainerHighest,
           borderRadius: BorderRadius.circular(16),
-          border: Border.all(
-            color: isUpcoming
-                ? cs.primary.withValues(alpha: 0.35)
-                : cs.outlineVariant,
-          ),
+          border: Border.all(color: cs.outlineVariant),
         ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -321,33 +391,35 @@ class _LessonRowTile extends StatelessWidget {
               children: [
                 Expanded(
                   child: Text(
-                    '$day • $lessonNo',
+                    lessonNo,
                     style: const TextStyle(fontWeight: FontWeight.w900),
                   ),
                 ),
-                Text(
-                  time,
-                  style: TextStyle(
-                    color: cs.onSurfaceVariant,
-                    fontWeight: FontWeight.w700,
+                if (time != null)
+                  Text(
+                    time,
+                    style: TextStyle(
+                      color: cs.onSurfaceVariant,
+                      fontWeight: FontWeight.w700,
+                    ),
                   ),
-                ),
               ],
             ),
             const SizedBox(height: 6),
-            Text(subject, style: const TextStyle(fontWeight: FontWeight.w700)),
-            const SizedBox(height: 4),
             Text(
               row.topic,
-              style: TextStyle(color: cs.onSurfaceVariant),
-              maxLines: 2,
-              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                color: cs.onSurfaceVariant,
+                fontWeight: FontWeight.w600,
+              ),
             ),
-            const SizedBox(height: 6),
-            Text(
-              'Оценки: ${row.marksShort}',
-              style: TextStyle(color: cs.onSurfaceVariant),
-            ),
+            if (marksText != null) ...[
+              const SizedBox(height: 8),
+              Text(
+                'Оценки: $marksText',
+                style: TextStyle(color: cs.onSurfaceVariant),
+              ),
+            ],
           ],
         ),
       ),

@@ -27,6 +27,7 @@ class SubjectQuarterLessonsScreen extends StatelessWidget {
       child: Scaffold(
         appBar: AppBar(title: const Text('Уроки за четверть')),
         body: AppScaffoldMaxWidth(
+          padding: EdgeInsets.symmetric(vertical: 10),
           maxWidth: 980,
           child: SubjectQuarterLessonsContent(
             subjectName: subjectName,

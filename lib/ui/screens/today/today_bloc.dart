@@ -24,32 +24,39 @@ class TodayDateSelected extends TodayEvent {
 
 class TodayRefreshRequested extends TodayEvent {}
 
+class TodayJumpToTodayRequested extends TodayEvent {}
+
 class TodayState {
   final DateTime today;
+  final DateTime effectiveToday;
   final DateTime selectedDate;
   final List<DateTime> dateList;
   final ScreenDataState<DailySchedule?> dataState;
   final bool shouldNotifySundayAutoMove;
   final bool shouldNotifySundayBlocked;
+  final int ribbonJumpVersion;
 
   const TodayState({
     required this.today,
+    required this.effectiveToday,
     required this.selectedDate,
     required this.dateList,
     required this.dataState,
     this.shouldNotifySundayAutoMove = false,
     this.shouldNotifySundayBlocked = false,
+    this.ribbonJumpVersion = 0,
   });
 
   factory TodayState.initial() {
     final now = DateTime.now();
     final today = DateTime(now.year, now.month, now.day);
-    final selected = today.weekday == DateTime.sunday
+    final effectiveToday = today.weekday == DateTime.sunday
         ? today.add(const Duration(days: 1))
         : today;
     return TodayState(
       today: today,
-      selectedDate: selected.dateOnly,
+      effectiveToday: effectiveToday.dateOnly,
+      selectedDate: effectiveToday.dateOnly,
       dateList: _generateDateList(today),
       dataState: ScreenDataState.initial<DailySchedule?>(null),
       shouldNotifySundayAutoMove: today.weekday == DateTime.sunday,
@@ -58,19 +65,23 @@ class TodayState {
 
   TodayState copyWith({
     DateTime? today,
+    DateTime? effectiveToday,
     DateTime? selectedDate,
     List<DateTime>? dateList,
     ScreenDataState<DailySchedule?>? dataState,
     bool? shouldNotifySundayAutoMove,
     bool? shouldNotifySundayBlocked,
+    int? ribbonJumpVersion,
   }) {
     return TodayState(
       today: today ?? this.today,
+      effectiveToday: effectiveToday ?? this.effectiveToday,
       selectedDate: selectedDate ?? this.selectedDate,
       dateList: dateList ?? this.dateList,
       dataState: dataState ?? this.dataState,
       shouldNotifySundayAutoMove: shouldNotifySundayAutoMove ?? false,
       shouldNotifySundayBlocked: shouldNotifySundayBlocked ?? false,
+      ribbonJumpVersion: ribbonJumpVersion ?? this.ribbonJumpVersion,
     );
   }
 
@@ -114,6 +125,7 @@ class TodayBloc extends Bloc<TodayEvent, TodayState> {
     on<TodayStarted>(_onStarted);
     on<TodayDateSelected>(_onDateSelected);
     on<TodayRefreshRequested>(_onRefresh);
+    on<TodayJumpToTodayRequested>(_onJumpToToday);
   }
 
   Future<void> _onStarted(TodayStarted event, Emitter<TodayState> emit) async {
@@ -139,6 +151,16 @@ class TodayBloc extends Bloc<TodayEvent, TodayState> {
     final date = state.selectedDate;
     final token = ++_activeRequestToken;
     await _fetchFromNetwork(emit, date, token);
+  }
+
+  Future<void> _onJumpToToday(
+    TodayJumpToTodayRequested event,
+    Emitter<TodayState> emit,
+  ) async {
+    final target = state.effectiveToday;
+    emit(state.copyWith(ribbonJumpVersion: state.ribbonJumpVersion + 1));
+    if (state.selectedDate.isSameDate(target)) return;
+    await _reload(emit, target, preserveStatus: false);
   }
 
   Future<void> _reload(

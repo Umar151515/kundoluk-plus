@@ -2,7 +2,6 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
-import 'package:intl/intl.dart';
 
 import '../../../core/extensions/datetime_x.dart';
 import '../../../core/offline/ui_net_status.dart';
@@ -125,6 +124,7 @@ class _TodayViewState extends State<_TodayView> {
     return BlocConsumer<TodayBloc, TodayState>(
       listenWhen: (prev, curr) =>
           prev.selectedDate != curr.selectedDate ||
+          prev.ribbonJumpVersion != curr.ribbonJumpVersion ||
           prev.shouldNotifySundayAutoMove != curr.shouldNotifySundayAutoMove ||
           prev.shouldNotifySundayBlocked != curr.shouldNotifySundayBlocked,
       listener: (context, state) {
@@ -150,10 +150,11 @@ class _TodayViewState extends State<_TodayView> {
       builder: (context, state) {
         final bloc = context.read<TodayBloc>();
         final cs = Theme.of(context).colorScheme;
-        final dfTitle = DateFormat('d MMMM, EEE');
 
         final dataState = state.dataState;
         final schedule = dataState.cache;
+        final quarter = SchoolYear.getQuarter(state.selectedDate, nearest: false);
+        final quarterProgress = SchoolYear.getQuarterProgress(state.selectedDate);
 
         final showOfflineBanner =
             dataState.status == UiNetStatus.offlineUsingCache;
@@ -175,7 +176,7 @@ class _TodayViewState extends State<_TodayView> {
               backgroundColor: Theme.of(context).scaffoldBackgroundColor,
               titleSpacing: 16,
               title: Text(
-                dfTitle.format(state.selectedDate),
+                state.selectedDate.russianTextDateWithWeekday,
                 style: const TextStyle(
                   fontSize: 16,
                   fontWeight: FontWeight.w900,
@@ -184,10 +185,7 @@ class _TodayViewState extends State<_TodayView> {
               actions: [
                 IconButton(
                   tooltip: 'Сегодня',
-                  onPressed: () {
-                    final today = DateTime.now().dateOnly;
-                    bloc.add(TodayDateSelected(today));
-                  },
+                  onPressed: () => bloc.add(TodayJumpToTodayRequested()),
                   icon: const Icon(Icons.today_rounded),
                 ),
                 const SizedBox(width: 4),
@@ -218,7 +216,7 @@ class _TodayViewState extends State<_TodayView> {
                         itemCount: state.dateList.length,
                         itemBuilder: (_, i) {
                           final date = state.dateList[i];
-                          final isToday = date.isSameDate(state.today);
+                          final isToday = date.isSameDate(state.effectiveToday);
                           final isSelected = date.isSameDate(
                             state.selectedDate,
                           );
@@ -260,6 +258,17 @@ class _TodayViewState extends State<_TodayView> {
                   title: 'Офлайн',
                   subtitle: offlineSubtitle,
                   onRetry: () => bloc.add(TodayRefreshRequested()),
+                ),
+              ),
+            if (quarter != null && quarterProgress != null)
+              SliverToBoxAdapter(
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
+                  child: _QuarterProgressCard(
+                    quarter: quarter,
+                    progress: quarterProgress,
+                    isVacation: SchoolYear.isVacation(state.selectedDate),
+                  ),
                 ),
               ),
             if (dataState.status == UiNetStatus.errorNoCache &&
@@ -345,5 +354,77 @@ class _TodayViewState extends State<_TodayView> {
     final m = int.tryParse(parts[1]);
     if (h == null || m == null) return null;
     return DateTime(day.year, day.month, day.day, h, m);
+  }
+}
+
+class _QuarterProgressCard extends StatelessWidget {
+  final int quarter;
+  final double progress;
+  final bool isVacation;
+
+  const _QuarterProgressCard({
+    required this.quarter,
+    required this.progress,
+    required this.isVacation,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    final normalized = progress.clamp(0, 100).toDouble();
+
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: cs.surfaceContainerHighest,
+        borderRadius: BorderRadius.circular(18),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(Icons.timeline_rounded, color: cs.primary),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Text(
+                  'Четверть завершена на ${normalized.round()}%',
+                  style: const TextStyle(
+                    fontWeight: FontWeight.w900,
+                    fontSize: 15,
+                  ),
+                ),
+              ),
+              Text(
+                '$quarter',
+                style: TextStyle(
+                  color: cs.primary,
+                  fontWeight: FontWeight.w900,
+                  fontSize: 18,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          ClipRRect(
+            borderRadius: BorderRadius.circular(999),
+            child: LinearProgressIndicator(
+              value: normalized / 100,
+              minHeight: 10,
+            ),
+          ),
+          if (isVacation) ...[
+            const SizedBox(height: 8),
+            Text(
+              'На выбранную дату идут каникулы.',
+              style: TextStyle(
+                color: cs.onSurfaceVariant,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
   }
 }

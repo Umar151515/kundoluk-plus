@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 
 import '../../../data/stores/app_lock_store.dart';
 import '../../widgets/app_scaffold_max_width.dart';
+import '../../widgets/pin_pad.dart';
 
 class AppLockScreen extends StatefulWidget {
   final AppLockStore appLock;
@@ -38,6 +39,7 @@ class _AppLockScreenState extends State<AppLockScreen> {
     }
   }
 
+  @override
   void dispose() {
     _ctrl.dispose();
     super.dispose();
@@ -50,6 +52,22 @@ class _AppLockScreenState extends State<AppLockScreen> {
       return;
     }
     widget.onUnlocked();
+  }
+
+  void _appendDigit(String digit) {
+    if (_ctrl.text.length >= 8) return;
+    setState(() {
+      _bad = false;
+      _ctrl.text += digit;
+    });
+  }
+
+  void _backspace() {
+    if (_ctrl.text.isEmpty) return;
+    setState(() {
+      _bad = false;
+      _ctrl.text = _ctrl.text.substring(0, _ctrl.text.length - 1);
+    });
   }
 
   Future<void> _tryBiometric({bool auto = false}) async {
@@ -113,17 +131,14 @@ class _AppLockScreenState extends State<AppLockScreen> {
                     const SizedBox(height: 12),
                     TextField(
                       controller: _ctrl,
+                      readOnly: true,
+                      enableInteractiveSelection: false,
                       obscureText: true,
-                      autofocus: !useBiometric,
-                      onSubmitted: (_) => _tryUnlock(),
                       decoration: InputDecoration(
-                        labelText: 'Пароль / PIN',
-                        errorText: _bad ? 'Неверный пароль' : null,
-                        prefixIcon: const Icon(Icons.password_rounded),
+                        labelText: 'PIN-код',
+                        errorText: _bad ? 'Неверный PIN-код' : null,
+                        prefixIcon: const Icon(Icons.pin_rounded),
                       ),
-                      onChanged: (_) {
-                        if (_bad) setState(() => _bad = false);
-                      },
                     ),
                     const SizedBox(height: 12),
                     if (useBiometric) ...[
@@ -138,7 +153,7 @@ class _AppLockScreenState extends State<AppLockScreen> {
                       ),
                       const SizedBox(height: 10),
                       Text(
-                        'Если биометрия недоступна, используйте пароль приложения.',
+                        'Если биометрия недоступна, используй PIN-код приложения.',
                         style: TextStyle(color: cs.onSurfaceVariant, fontSize: 12),
                         textAlign: TextAlign.center,
                       ),
@@ -151,6 +166,14 @@ class _AppLockScreenState extends State<AppLockScreen> {
                         onPressed: _tryUnlock,
                         child: const Text('Разблокировать'),
                       ),
+                    ),
+                    const SizedBox(height: 12),
+                    PinPad(
+                      value: _ctrl.text,
+                      onDigit: _appendDigit,
+                      onBackspace: _backspace,
+                      actionIcon: Icons.lock_open_rounded,
+                      onAction: _tryUnlock,
                     ),
                   ],
                 ),
