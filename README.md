@@ -26,6 +26,7 @@
 <img src="assets/screenshots/screen5.jpg" width="250"/>
 <img src="assets/screenshots/screen6.jpg" width="250"/>
 <img src="assets/screenshots/screen7.jpg" width="250"/>
+<img src="assets/screenshots/screen8.jpg" width="250"/>
 </p>
 
 ---

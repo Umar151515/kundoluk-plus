@@ -6,6 +6,7 @@ import '../../../core/offline/ui_net_status.dart';
 import '../../../data/api/kundoluk_api.dart';
 import '../../widgets/api_error_view.dart';
 import '../../widgets/empty_view.dart';
+import '../../widgets/mark_average_simulator_sheet.dart';
 import '../../widgets/offline_banner.dart';
 import '../today/lesson_details_screen.dart';
 import 'subject_quarter_lessons_bloc.dart';
@@ -37,7 +38,7 @@ class SubjectLessonsSheet extends StatelessWidget {
   }
 }
 
-class SubjectQuarterLessonsContent extends StatelessWidget {
+class SubjectQuarterLessonsContent extends StatefulWidget {
   final String subjectName;
   final int term;
   final bool fullScreen;
@@ -50,26 +51,37 @@ class SubjectQuarterLessonsContent extends StatelessWidget {
   });
 
   @override
+  State<SubjectQuarterLessonsContent> createState() =>
+      _SubjectQuarterLessonsContentState();
+}
+
+class _SubjectQuarterLessonsContentState
+    extends State<SubjectQuarterLessonsContent> {
+  bool _onlyWithMarks = false;
+
+  @override
   Widget build(BuildContext context) {
     return BlocBuilder<SubjectQuarterLessonsBloc, SubjectQuarterLessonsState>(
       builder: (context, state) {
         final bloc = context.read<SubjectQuarterLessonsBloc>();
         final cs = Theme.of(context).colorScheme;
 
-        final rows = bloc.buildRows(subjectName);
+        final allRows = bloc.buildRows(widget.subjectName).toList()
+          ..sort((a, b) => b.date.compareTo(a.date));
         final today = DateTime.now().dateOnly;
-        final passedLessonsCount = rows
-            .where((row) => !row.date.isAfter(today))
-            .length;
-        final remainingLessonsCount = rows
-            .where((row) => row.date.isAfter(today))
-            .length;
-        final groupedRows = <DateTime, List<SubjectLessonRow>>{};
-        for (final row in rows) {
-          groupedRows.putIfAbsent(row.date, () => []).add(row);
-        }
-        final sortedDates = groupedRows.keys.toList()
-          ..sort((a, b) => b.compareTo(a));
+        final rows = _onlyWithMarks
+            ? allRows.where((row) => row.lesson.marks.isNotEmpty).toList()
+            : allRows;
+        final subjectMarks = allRows
+            .expand((row) => row.lesson.marks)
+            .where((mark) => mark.value != null && mark.value! > 0)
+            .map((mark) => mark.value!)
+            .toList();
+
+        final passedLessonsCount =
+            rows.where((row) => !row.date.isAfter(today)).length;
+        final remainingLessonsCount =
+            rows.where((row) => row.date.isAfter(today)).length;
 
         final showOfflineBanner = state.status == UiNetStatus.offlineUsingCache;
         final offlineSubtitle = state.error == null
@@ -78,134 +90,145 @@ class SubjectQuarterLessonsContent extends StatelessWidget {
             ? 'Нет сети или сервер недоступен. Показаны сохраненные данные.'
             : 'Сервер вернул ошибку. Показаны сохраненные данные.';
 
-        final body = Column(
-          children: [
-            Row(
-              children: [
-                const Icon(Icons.subject_rounded),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        subjectName,
-                        style: const TextStyle(
-                          fontSize: 18,
-                          fontWeight: FontWeight.w900,
-                        ),
-                        maxLines: 2,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                      const SizedBox(height: 2),
-                      Text(
-                        'Все уроки за $term-ю четверть',
-                        style: TextStyle(
-                          color: cs.onSurfaceVariant,
-                          fontWeight: FontWeight.w700,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                IconButton(
-                  tooltip: 'Обновить',
-                  onPressed: state.status == UiNetStatus.loading
-                      ? null
-                      : () => bloc.add(SubjectQuarterLessonsRefreshRequested()),
-                  icon: const Icon(Icons.refresh_rounded),
-                ),
-              ],
-            ),
-            const SizedBox(height: 8),
-            if (state.status == UiNetStatus.loading)
-              const LinearProgressIndicator(minHeight: 2),
-            if (state.status == UiNetStatus.errorNoCache && state.error != null)
-              Expanded(
-                child: ApiErrorView(
-                  failure: state.error!,
-                  onRetry: () =>
-                      bloc.add(SubjectQuarterLessonsRefreshRequested()),
-                  settings: bloc.api.settings,
-                ),
-              )
-            else if (state.data == null && state.status != UiNetStatus.loading)
-              Expanded(
-                child: EmptyView(
-                  title: 'Нет данных',
-                  subtitle: 'Не удалось загрузить уроки по предмету.',
-                  onRetry: () =>
-                      bloc.add(SubjectQuarterLessonsRefreshRequested()),
-                ),
-              )
-            else if (rows.isEmpty && state.status != UiNetStatus.loading)
-              Expanded(
-                child: EmptyView(
-                  title: 'Пусто',
-                  subtitle: 'Уроков по этому предмету за выбранную четверть нет.',
-                  onRetry: () =>
-                      bloc.add(SubjectQuarterLessonsRefreshRequested()),
-                ),
-              )
-            else
-              Expanded(
-                child: ListView(
-                  children: [
-                    if (showOfflineBanner)
-                      OfflineBanner(
-                        title: 'Офлайн',
-                        subtitle: offlineSubtitle,
-                        onRetry: () =>
-                            bloc.add(SubjectQuarterLessonsRefreshRequested()),
-                      ),
-                    const SizedBox(height: 10),
-                    Wrap(
-                      spacing: 8,
-                      runSpacing: 8,
+        Widget content;
+
+        if (state.status == UiNetStatus.errorNoCache && state.error != null) {
+          content = ApiErrorView(
+            failure: state.error!,
+            onRetry: () => bloc.add(SubjectQuarterLessonsRefreshRequested()),
+            settings: bloc.api.settings,
+          );
+        } else if (state.data == null && state.status != UiNetStatus.loading) {
+          content = EmptyView(
+            title: 'Нет данных',
+            subtitle: 'Не удалось загрузить уроки по предмету.',
+            onRetry: () => bloc.add(SubjectQuarterLessonsRefreshRequested()),
+          );
+        } else if (rows.isEmpty && state.status != UiNetStatus.loading) {
+          content = EmptyView(
+            title: 'Пусто',
+            subtitle: _onlyWithMarks
+                ? 'Для этого предмета нет уроков с оценками.'
+                : 'Уроков по этому предмету за выбранную четверть нет.',
+            onRetry: () => bloc.add(SubjectQuarterLessonsRefreshRequested()),
+          );
+        } else {
+          content = ListView(
+            children: [
+              Row(
+                children: [
+                  const Icon(Icons.subject_rounded),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        _CountChip(
-                          icon: Icons.check_circle_outline_rounded,
-                          label: 'Прошло',
-                          value: '$passedLessonsCount',
+                        Text(
+                          widget.subjectName,
+                          style: const TextStyle(
+                            fontSize: 18,
+                            fontWeight: FontWeight.w900,
+                          ),
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
                         ),
-                        _CountChip(
-                          icon: Icons.schedule_rounded,
-                          label: 'Осталось',
-                          value: '$remainingLessonsCount',
+                        const SizedBox(height: 2),
+                        Text(
+                          'Все уроки за ${widget.term}-ю четверть',
+                          style: TextStyle(
+                            color: cs.onSurfaceVariant,
+                            fontWeight: FontWeight.w700,
+                          ),
                         ),
                       ],
                     ),
-                    const SizedBox(height: 10),
-                    ...sortedDates.map((date) {
-                      final dayRows = groupedRows[date]!..sort(
-                        (a, b) => (a.lesson.lessonNumber ?? 999).compareTo(
-                          b.lesson.lessonNumber ?? 999,
-                        ),
-                      );
-                      return _LessonDaySection(
-                        date: date,
-                        rows: dayRows,
-                        isToday: date.isSameDate(today),
-                        isUpcoming: date.isAfter(today),
+                  ),
+                  IconButton(
+                    tooltip: 'Обновить',
+                    onPressed: state.status == UiNetStatus.loading
+                        ? null
+                        : () => bloc.add(SubjectQuarterLessonsRefreshRequested()),
+                    icon: const Icon(Icons.refresh_rounded),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 8),
+              Wrap(
+                alignment: WrapAlignment.center,
+                crossAxisAlignment: WrapCrossAlignment.center,
+                spacing: 8,
+                runSpacing: 8,
+                children: [
+                  _CountChip(
+                    icon: Icons.check_circle_outline_rounded,
+                    label: 'Прошло',
+                    value: '$passedLessonsCount',
+                  ),
+                  _CountChip(
+                    icon: Icons.schedule_rounded,
+                    label: 'Осталось',
+                    value: '$remainingLessonsCount',
+                  ),
+                  FilterChip(
+                    selected: _onlyWithMarks,
+                    onSelected: (value) => setState(() => _onlyWithMarks = value),
+                    label: const Text('Только с оценками'),
+                    avatar: const Icon(Icons.filter_alt_rounded, size: 18),
+                  ),
+                  FilledButton.icon(
+                    onPressed: () => showMarkAverageSimulatorSheet(
+                      context,
+                      title: 'Симулятор оценок',
+                      subtitle: widget.subjectName,
+                      initialMarks: subjectMarks,
+                    ),
+                    icon: const Icon(Icons.calculate_rounded),
+                    label: const Text('Симулятор оценок'),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 8),
+              if (state.status == UiNetStatus.loading)
+                const LinearProgressIndicator(minHeight: 2),
+              if (showOfflineBanner) ...[
+                const SizedBox(height: 8),
+                OfflineBanner(
+                  title: 'Офлайн',
+                  subtitle: offlineSubtitle,
+                  onRetry: () =>
+                      bloc.add(SubjectQuarterLessonsRefreshRequested()),
+                ),
+              ],
+              const SizedBox(height: 4),
+              ...rows.map(
+                (row) => _LessonRowTile(
+                  row: row,
+                  isToday: row.date.isSameDate(today),
+                  isUpcoming: row.date.isAfter(today),
+                  onTap: () => Navigator.of(context).push(
+                    MaterialPageRoute(
+                      builder: (_) => LessonDetailsScreen(
+                        lesson: row.lesson,
                         api: bloc.api,
-                      );
-                    }),
-                    if (!fullScreen) ...[
-                      const SizedBox(height: 16),
-                      SizedBox(
-                        width: double.infinity,
-                        height: 46,
-                        child: FilledButton(
-                          onPressed: () => Navigator.pop(context),
-                          child: const Text('Закрыть'),
-                        ),
                       ),
-                    ],
-                  ],
+                    ),
+                  ),
                 ),
               ),
-          ],
-        );
+              if (!widget.fullScreen) ...[
+                const SizedBox(height: 12),
+                SizedBox(
+                  width: double.infinity,
+                  height: 46,
+                  child: FilledButton(
+                    onPressed: () => Navigator.pop(context),
+                    child: const Text('Закрыть'),
+                  ),
+                ),
+              ],
+            ],
+          );
+        }
 
         return SafeArea(
           child: Padding(
@@ -213,13 +236,13 @@ class SubjectQuarterLessonsContent extends StatelessWidget {
               left: 16,
               right: 16,
               top: 8,
-              bottom: fullScreen
+              bottom: widget.fullScreen
                   ? 16
                   : 16 + MediaQuery.of(context).viewInsets.bottom,
             ),
             child: ConstrainedBox(
               constraints: const BoxConstraints(maxWidth: 980),
-              child: body,
+              child: content,
             ),
           ),
         );
@@ -263,19 +286,17 @@ class _CountChip extends StatelessWidget {
   }
 }
 
-class _LessonDaySection extends StatelessWidget {
-  final DateTime date;
-  final List<SubjectLessonRow> rows;
+class _LessonRowTile extends StatelessWidget {
+  final SubjectLessonRow row;
   final bool isToday;
   final bool isUpcoming;
-  final KundolukApi api;
+  final VoidCallback onTap;
 
-  const _LessonDaySection({
-    required this.date,
-    required this.rows,
+  const _LessonRowTile({
+    required this.row,
     required this.isToday,
     required this.isUpcoming,
-    required this.api,
+    required this.onTap,
   });
 
   @override
@@ -286,85 +307,6 @@ class _LessonDaySection extends StatelessWidget {
         : isUpcoming
         ? 'Будет'
         : 'Было';
-
-    return Container(
-      margin: const EdgeInsets.only(bottom: 12),
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: cs.surfaceContainerLowest,
-        borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: cs.outlineVariant.withValues(alpha: 0.7)),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Expanded(
-                child: Text(
-                  date.russianTextDateWithWeekday,
-                  style: const TextStyle(
-                    fontWeight: FontWeight.w900,
-                    fontSize: 15,
-                  ),
-                ),
-              ),
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                decoration: BoxDecoration(
-                  color: isToday
-                      ? cs.primaryContainer
-                      : isUpcoming
-                      ? cs.tertiaryContainer
-                      : cs.surfaceContainerHighest,
-                  borderRadius: BorderRadius.circular(999),
-                ),
-                child: Text(
-                  badgeText,
-                  style: TextStyle(
-                    color: isToday
-                        ? cs.onPrimaryContainer
-                        : isUpcoming
-                        ? cs.onTertiaryContainer
-                        : cs.onSurfaceVariant,
-                    fontWeight: FontWeight.w800,
-                  ),
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 10),
-          ...rows.map(
-            (row) => _LessonRowTile(
-              row: row,
-              onTap: () => Navigator.of(context).push(
-                MaterialPageRoute(
-                  builder: (_) => LessonDetailsScreen(
-                    lesson: row.lesson,
-                    api: api,
-                  ),
-                ),
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _LessonRowTile extends StatelessWidget {
-  final SubjectLessonRow row;
-  final VoidCallback onTap;
-
-  const _LessonRowTile({
-    required this.row,
-    required this.onTap,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
     final lessonNo = row.lesson.lessonNumber != null
         ? 'Урок №${row.lesson.lessonNumber}'
         : 'Урок';
@@ -372,55 +314,153 @@ class _LessonRowTile extends StatelessWidget {
         ? '${row.lesson.startTime} - ${row.lesson.endTime}'
         : null;
     final marksText = row.marksShort == '—' ? null : row.marksShort;
+    final markParts = marksText == null
+        ? const <String>[]
+        : marksText
+              .split(',')
+              .map((part) => part.trim())
+              .where((part) => part.isNotEmpty)
+              .toList();
 
     return InkWell(
       borderRadius: BorderRadius.circular(14),
       onTap: onTap,
       child: Container(
-        margin: const EdgeInsets.symmetric(vertical: 5),
+        margin: const EdgeInsets.symmetric(vertical: 4),
         padding: const EdgeInsets.all(12),
         decoration: BoxDecoration(
-          color: cs.surfaceContainerHighest,
+          color: marksText != null
+              ? cs.primaryContainer.withValues(alpha: 0.16)
+              : cs.surfaceContainerHighest,
           borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: cs.outlineVariant),
+          border: Border.all(
+            color: marksText != null
+                ? cs.primary.withValues(alpha: 0.28)
+                : cs.outlineVariant,
+          ),
         ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Expanded(
-                  child: Text(
-                    lessonNo,
-                    style: const TextStyle(fontWeight: FontWeight.w900),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        row.date.russianTextDateWithWeekday,
+                        style: const TextStyle(
+                          fontWeight: FontWeight.w900,
+                          fontSize: 15,
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        lessonNo,
+                        style: TextStyle(
+                          color: cs.onSurfaceVariant,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                    ],
                   ),
                 ),
-                if (time != null)
-                  Text(
-                    time,
-                    style: TextStyle(
-                      color: cs.onSurfaceVariant,
-                      fontWeight: FontWeight.w700,
+                const SizedBox(width: 8),
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.end,
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                      decoration: BoxDecoration(
+                        color: isToday
+                            ? cs.primaryContainer
+                            : isUpcoming
+                            ? cs.tertiaryContainer
+                            : cs.surfaceContainerHighest,
+                        borderRadius: BorderRadius.circular(999),
+                      ),
+                      child: Text(
+                        badgeText,
+                        style: TextStyle(
+                          color: isToday
+                              ? cs.onPrimaryContainer
+                              : isUpcoming
+                              ? cs.onTertiaryContainer
+                              : cs.onSurfaceVariant,
+                          fontWeight: FontWeight.w800,
+                        ),
+                      ),
                     ),
-                  ),
+                    const SizedBox(height: 8),
+                    Icon(
+                      Icons.chevron_right_rounded,
+                      color: cs.onSurfaceVariant,
+                    ),
+                  ],
+                ),
               ],
             ),
-            const SizedBox(height: 6),
-            Text(
-              row.topic,
-              style: TextStyle(
-                color: cs.onSurfaceVariant,
-                fontWeight: FontWeight.w600,
-              ),
-            ),
-            if (marksText != null) ...[
+            if (time != null) ...[
               const SizedBox(height: 8),
               Text(
-                'Оценки: $marksText',
-                style: TextStyle(color: cs.onSurfaceVariant),
+                time,
+                style: TextStyle(
+                  color: cs.onSurfaceVariant,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ],
+            if (markParts.isNotEmpty) ...[
+              const SizedBox(height: 8),
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: markParts
+                    .map((part) => _MarkBadge(label: part))
+                    .toList(),
+              ),
+            ],
+            if (row.topic.trim().isNotEmpty) ...[
+              const SizedBox(height: 8),
+              Text(
+                row.topic,
+                style: TextStyle(
+                  color: cs.onSurfaceVariant,
+                  fontWeight: FontWeight.w600,
+                ),
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
               ),
             ],
           ],
+        ),
+      ),
+    );
+  }
+}
+
+class _MarkBadge extends StatelessWidget {
+  final String label;
+
+  const _MarkBadge({required this.label});
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      decoration: BoxDecoration(
+        color: cs.primaryContainer,
+        borderRadius: BorderRadius.circular(999),
+      ),
+      child: Text(
+        label,
+        style: TextStyle(
+          color: cs.onPrimaryContainer,
+          fontWeight: FontWeight.w900,
+          fontSize: 15,
         ),
       ),
     );

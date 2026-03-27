@@ -17,6 +17,7 @@ import '../../domain/models/lesson.dart';
 import '../../domain/models/mark.dart';
 import '../../domain/models/quarter_mark.dart';
 import '../../domain/school_year/school_year.dart';
+import 'kundoluk_cache_parser.dart';
 import 'kundoluk_api_mapping.dart';
 
 class KundolukApi {
@@ -272,7 +273,7 @@ class KundolukApi {
       final json = _mapping.asMap(resp.data);
       final code = json.parseInt('resultCode') ?? 0;
       final msg = (json['resultMessage'] ?? json['message'] ?? '').toString();
-      final action = json.containsKey('actionResult') ? json['actionResult'] : json;
+      final action = KundolukCacheParser.extractActionResult(json);
 
       if (code != 0) {
         return ApiResponse.fail(
@@ -287,14 +288,10 @@ class KundolukApi {
         );
       }
 
-      final list = _mapping.asList(action);
-      final lessons = list
-          .map((e) => Lesson.fromJson(_mapping.asMap(e)))
-          .whereType<Lesson>()
-          .toList()
-        ..sort((a, b) => (a.lessonNumber ?? 999).compareTo(b.lessonNumber ?? 999));
-
-      final schedule = DailySchedule(date: day.dateOnly, lessons: lessons);
+      final schedule = DailySchedule(
+        date: day.dateOnly,
+        lessons: KundolukCacheParser.parseLessons(action),
+      );
 
       await auth.saveToCache(CacheKeys.schedule(day), json);
 
@@ -333,7 +330,7 @@ class KundolukApi {
       final json = _mapping.asMap(resp.data);
       final code = json.parseInt('resultCode') ?? 0;
       final msg = (json['resultMessage'] ?? json['message'] ?? '').toString();
-      final action = json.containsKey('actionResult') ? json['actionResult'] : json;
+      final action = KundolukCacheParser.extractActionResult(json);
 
       if (resp.statusCode != 200) {
         return ApiResponse.fail(
@@ -361,26 +358,11 @@ class KundolukApi {
         );
       }
 
-      final list = _mapping.asList(action);
-      final lessons = list.map((e) => Lesson.fromJson(_mapping.asMap(e))).whereType<Lesson>().toList();
-
-      final daysMap = <DateTime, List<Lesson>>{};
-      for (final l in lessons) {
-        final d = l.lessonDay?.toLocal();
-        if (d == null) continue;
-        final day = DateTime(d.year, d.month, d.day);
-        daysMap.putIfAbsent(day, () => []).add(l);
-      }
-
-      final days = daysMap.entries
-          .map((e) {
-            final ls = [...e.value]..sort((a, b) => (a.lessonNumber ?? 999).compareTo(b.lessonNumber ?? 999));
-            return DailySchedule(date: e.key, lessons: ls);
-          })
-          .toList()
-        ..sort((a, b) => a.date.compareTo(b.date));
-
-      return ApiResponse.ok(DailySchedules(days: days), message: msg);
+      final schedules = KundolukCacheParser.parseDailySchedules(json);
+      return ApiResponse.ok(
+        schedules ?? const DailySchedules(days: []),
+        message: msg,
+      );
     } on DioException catch (e) {
       return ApiResponse.fail(
         _mapping.mapDioToFailure(e),
@@ -476,35 +458,9 @@ class KundolukApi {
   }
 
   Future<DailySchedules?> loadFullScheduleTermFromCache(int term) async {
-    final json = await auth.loadFromCache(CacheKeys.fullTerm(term));
-    if (json == null) return null;
-
-    try {
-      final action = json['actionResult'];
-      if (action is! List) return null;
-
-      final lessons = action.map((e) => Lesson.fromJson(_mapping.asMap(e))).whereType<Lesson>().toList();
-
-      final daysMap = <DateTime, List<Lesson>>{};
-      for (final l in lessons) {
-        final d = l.lessonDay?.toLocal();
-        if (d == null) continue;
-        final day = DateTime(d.year, d.month, d.day);
-        daysMap.putIfAbsent(day, () => []).add(l);
-      }
-
-      final days = daysMap.entries
-          .map((e) {
-            final ls = [...e.value]..sort((a, b) => (a.lessonNumber ?? 999).compareTo(b.lessonNumber ?? 999));
-            return DailySchedule(date: e.key, lessons: ls);
-          })
-          .toList()
-        ..sort((a, b) => a.date.compareTo(b.date));
-
-      return DailySchedules(days: days);
-    } catch (_) {
-      return null;
-    }
+    return KundolukCacheParser.parseDailySchedules(
+      await auth.loadFromCache(CacheKeys.fullTerm(term)),
+    );
   }
 
   DailySchedules _mergeQuarterData({
@@ -810,7 +766,7 @@ class KundolukApi {
       final json = _mapping.asMap(resp.data);
       final code = json.parseInt('resultCode') ?? 0;
       final msg = (json['resultMessage'] ?? json['message'] ?? '').toString();
-      final action = json.containsKey('actionResult') ? json['actionResult'] : json;
+      final action = KundolukCacheParser.extractActionResult(json);
 
       if (code != 0) {
         return ApiResponse.fail(
@@ -825,26 +781,9 @@ class KundolukApi {
         );
       }
 
-      final list = _mapping.asList(action);
-      final lessons = list.map((e) => Lesson.fromJson(_mapping.asMap(e))).whereType<Lesson>().toList();
-
-      final daysMap = <DateTime, List<Lesson>>{};
-      for (final l in lessons) {
-        final d = l.lessonDay?.toLocal();
-        if (d == null) continue;
-        final day = DateTime(d.year, d.month, d.day);
-        daysMap.putIfAbsent(day, () => []).add(l);
-      }
-
-      final days = daysMap.entries
-          .map((e) {
-            final ls = [...e.value]..sort((a, b) => (a.lessonNumber ?? 999).compareTo(b.lessonNumber ?? 999));
-            return DailySchedule(date: e.key, lessons: ls);
-          })
-          .toList()
-        ..sort((a, b) => a.date.compareTo(b.date));
-
-      final schedules = DailySchedules(days: days);
+      final schedules =
+          KundolukCacheParser.parseDailySchedules(json) ??
+          const DailySchedules(days: []);
 
       await auth.saveToCache(CacheKeys.marks(term, absent), json);
       return ApiResponse.ok(schedules, message: msg);
@@ -871,7 +810,7 @@ class KundolukApi {
       final json = _mapping.asMap(resp.data);
       final code = json.parseInt('resultCode') ?? 0;
       final msg = (json['resultMessage'] ?? json['message'] ?? '').toString();
-      final action = json.containsKey('actionResult') ? json['actionResult'] : json;
+      final action = KundolukCacheParser.extractActionResult(json);
 
       if (code != 0) {
         return ApiResponse.fail(
@@ -886,31 +825,9 @@ class KundolukApi {
         );
       }
 
-      final results = _mapping.asList(action);
-      final all = <QuarterMark>[];
-      for (final r in results) {
-        final rm = _mapping.asMap(r);
-        final qms = _mapping.asList(rm['quarterMarks']);
-        for (final q in qms) {
-          final qm = QuarterMark.fromJson(_mapping.asMap(q));
-          if (qm != null) all.add(qm);
-        }
-      }
-
-      final uniq = <String, QuarterMark>{};
-      for (final m in all) {
-        final id = m.objectId ?? '${m.subjectNameRu}:${m.quarter}:${m.quarterMark}:${m.customMark}';
-        uniq[id] = m;
-      }
-
-      final out = uniq.values.toList()
-        ..sort((a, b) {
-          final sA = a.subjectNameRu ?? a.subjectNameKg ?? '';
-          final sB = b.subjectNameRu ?? b.subjectNameKg ?? '';
-          final c = sA.compareTo(sB);
-          if (c != 0) return c;
-          return (a.quarter ?? 0).compareTo(b.quarter ?? 0);
-        });
+      final out = KundolukCacheParser.parseQuarterMarks(
+        <String, dynamic>{'actionResult': action},
+      );
 
       await auth.saveToCache(CacheKeys.quarterMarks(), json);
       return ApiResponse.ok(out, message: msg);

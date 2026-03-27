@@ -8,6 +8,7 @@ import '../../../data/stores/auth_store.dart';
 import '../../../domain/models/account.dart';
 import '../../widgets/chips.dart';
 import '../../widgets/info_table.dart';
+import '../../widgets/mark_average_simulator_sheet.dart';
 import '../auth/accounts_sheet.dart';
 import '../auth/login_screen.dart';
 import 'change_password_sheet.dart';
@@ -81,6 +82,22 @@ class ProfileScreen extends StatelessWidget {
                   ),
                 ),
               ],
+            ),
+          ),
+        ),
+        const SizedBox(height: 10),
+        Card(
+          elevation: 0,
+          color: cs.surfaceContainerHighest,
+          child: ListTile(
+            leading: const Icon(Icons.calculate_rounded),
+            title: const Text('Симулятор оценок'),
+            subtitle: const Text('Добавляй оценки и смотри, какая выходит средняя'),
+            trailing: const Icon(Icons.chevron_right_rounded),
+            onTap: () => showMarkAverageSimulatorSheet(
+              context,
+              title: 'Симулятор оценок',
+              subtitle: 'Общий расчёт средней оценки',
             ),
           ),
         ),

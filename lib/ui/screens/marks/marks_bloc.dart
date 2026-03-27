@@ -6,6 +6,7 @@ import '../../../core/constants/cache_keys.dart';
 import '../../../core/offline/screen_data_state.dart';
 import '../../../core/offline/ui_net_status.dart';
 import '../../../data/api/kundoluk_api.dart';
+import '../../../data/api/kundoluk_cache_parser.dart';
 import '../../../data/stores/auth_store.dart';
 import '../../../domain/models/daily_schedule.dart';
 import '../../../domain/models/daily_schedules.dart';
@@ -124,37 +125,26 @@ class MarksBloc extends Bloc<MarksEvent, MarksState> {
     final entries = <MarkEntry>[];
 
     Future<void> addFromCache(String key) async {
-      final json = await auth.loadFromCache(key);
-      if (json == null) return;
+      final cached = await auth.loadFromCache(key);
+      if (cached == null) return;
 
-      try {
-        final action = json.containsKey('actionResult')
-            ? json['actionResult']
-            : json;
-        final list = (action as List?) ?? const [];
-        final lessons = list
-            .map(
-              (e) => Lesson.fromJson(
-                e is Map ? e.cast<String, dynamic>() : <String, dynamic>{},
-              ),
-            )
-            .whereType<Lesson>()
-            .toList();
+      final lessons = KundolukCacheParser.parseLessons(
+        KundolukCacheParser.extractActionResult(cached),
+      );
 
-        for (final lesson in lessons) {
-          for (final mark in lesson.marks) {
-            final d = lesson.lessonDay?.toLocal();
-            if (d == null) continue;
-            entries.add(
-              MarkEntry(
-                mark: mark,
-                lesson: lesson,
-                lessonDate: DateTime(d.year, d.month, d.day),
-              ),
-            );
-          }
+      for (final lesson in lessons) {
+        for (final mark in lesson.marks) {
+          final d = lesson.lessonDay?.toLocal();
+          if (d == null) continue;
+          entries.add(
+            MarkEntry(
+              mark: mark,
+              lesson: lesson,
+              lessonDate: DateTime(d.year, d.month, d.day),
+            ),
+          );
         }
-      } catch (_) {}
+      }
     }
 
     await addFromCache(keyPresent);
@@ -230,33 +220,10 @@ class MarksBloc extends Bloc<MarksEvent, MarksState> {
     DailySchedule? day = resp.data;
 
     if (!resp.isSuccess || day == null) {
-      final cached = await auth.loadFromCache(CacheKeys.schedule(dayDate));
-      if (cached != null) {
-        try {
-          final action = cached.containsKey('actionResult')
-              ? cached['actionResult']
-              : cached;
-          final list = (action as List?) ?? const [];
-          final lessons =
-              list
-                  .map(
-                    (e) => Lesson.fromJson(
-                      e is Map
-                          ? e.cast<String, dynamic>()
-                          : <String, dynamic>{},
-                    ),
-                  )
-                  .whereType<Lesson>()
-                  .toList()
-                ..sort(
-                  (a, b) =>
-                      (a.lessonNumber ?? 999).compareTo(b.lessonNumber ?? 999),
-                );
-          day = DailySchedule(date: dayDate, lessons: lessons);
-        } catch (_) {
-          day = null;
-        }
-      }
+      day = KundolukCacheParser.parseDailySchedule(
+        await auth.loadFromCache(CacheKeys.schedule(dayDate)),
+        dayDate,
+      );
     }
 
     if (day == null) return null;

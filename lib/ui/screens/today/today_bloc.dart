@@ -9,9 +9,9 @@ import '../../../core/offline/ui_net_status.dart';
 import '../../../core/network/api_error_kind.dart';
 import '../../../core/network/api_failure.dart';
 import '../../../data/api/kundoluk_api.dart';
+import '../../../data/api/kundoluk_cache_parser.dart';
 import '../../../data/stores/auth_store.dart';
 import '../../../domain/models/daily_schedule.dart';
-import '../../../domain/models/lesson.dart';
 
 sealed class TodayEvent {}
 
@@ -192,34 +192,11 @@ class TodayBloc extends Bloc<TodayEvent, TodayState> {
     int token,
   ) async {
     final key = CacheKeys.schedule(date);
-    final json = await auth.loadFromCache(key);
+    final parsed = KundolukCacheParser.parseDailySchedule(
+      await auth.loadFromCache(key),
+      date,
+    );
     if (_isRequestStale(token, date)) return;
-
-    DailySchedule? parsed;
-    if (json != null) {
-      try {
-        final action = json.containsKey('actionResult')
-            ? json['actionResult']
-            : json;
-        final list = (action as List?) ?? const [];
-        final lessons =
-            list
-                .map(
-                  (e) => Lesson.fromJson(
-                    e is Map ? e.cast<String, dynamic>() : <String, dynamic>{},
-                  ),
-                )
-                .whereType<Lesson>()
-                .toList()
-              ..sort(
-                (a, b) =>
-                    (a.lessonNumber ?? 999).compareTo(b.lessonNumber ?? 999),
-              );
-        parsed = DailySchedule(date: date, lessons: lessons);
-      } catch (_) {
-        parsed = null;
-      }
-    }
 
     emit(
       state.copyWith(
